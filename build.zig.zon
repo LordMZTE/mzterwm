@@ -1,0 +1,20 @@
+.{
+    .name = .mzterwm,
+    .version = "0.0.0",
+    .fingerprint = 0xd916d3282421c440,
+    .minimum_zig_version = "0.15.2",
+
+    .dependencies = .{
+        .wayland = .{
+            .url = "git+https://codeberg.org/ifreund/zig-wayland.git#f8ff8c7a7952ac5c45b34e7204d8f0cec03ffe6e",
+            .hash = "wayland-0.5.0-dev-lQa1kkXaAQDqOmm7eaFE88QrMTMtvag2B6jMC13yyai3",
+        },
+        .ziggy = .{
+            .url = "git+https://github.com/kristoff-it/ziggy.git#83fe52030a1a6b7c6d1ddf9740f46068566ae5cd",
+            .hash = "ziggy-0.1.0-kTg8v5pABgDztlefWHceH-Sh8tVveguFC61QkmLkIRaA",
+            .lazy = true,
+        },
+    },
+
+    .paths = .{""}, // TODO
+}
