@@ -1,3 +1,6 @@
+// This is an example configuration file for mzterwm, using the Ziggy language.
+// All values here are equal to their defaults unless otherwise noted.
+
 // Configuration for keys that are used to switch tags.
 // Tags work similar to tags in river-classic, but the keyboard configuration is fancier.
 //
@@ -6,7 +9,8 @@
 // you press will become your primary workspace, which governs the layout mode you'll get.
 .tag_keys = {
     // The modifier key you have to hold down to begin tag switching.
-    .mods = { .meta = true },
+    // The default here is { .meta = true }.  This has been changed to ease testing.
+    .mods = { .alt = true },
     // The keys for the tags you want to switch to, in increasing order for each tag.
     .keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9"],
 },
@@ -26,3 +30,13 @@
     // The size of gaps that are placed on every output around the windows.
     .output = 4,
 },
+
+// A list of keybinds that will act globally, regardless of the selected layout.
+// This differs from the default value.  By default, there are no keybinds.  You have to define them
+// all.  You probably also want to use meta instead of alt here.
+.keybinds = [
+    { .key = "j", .mods = { .alt = true }, .action = FocusWindow { .direction = "next" } },
+    { .key = "k", .mods = { .alt = true }, .action = FocusWindow { .direction = "prev" } },
+    { .key = "period", .mods = { .alt = true }, .action = FocusOutput { .direction = "next" } },
+    { .key = "comma", .mods = { .alt = true }, .action = FocusOutput { .direction = "prev" } },
+],

@@ -5,6 +5,8 @@ const wayland = @import("wayland");
 const xkbcommon = @import("xkbcommon");
 const mzterwm = @import("../root.zig");
 
+const action = @import("action.zig");
+
 const Config = @import("Config.zig");
 const Globals = @import("Globals.zig");
 const KeyManager = @import("KeyManager.zig");
@@ -31,6 +33,8 @@ tag_keys: []TagKeyData,
 
 /// The number of tag keys the user is holding down at the moment.
 tag_keys_down: u16,
+
+global_user_keys: []UserKeyData,
 
 pub const Output = struct {
     wm: *WindowManager,
@@ -113,8 +117,8 @@ pub const Window = struct {
         pub fn updateRegion(self: *RenderState, new: mzterwm.Region) void {
             const inner = new.inset(self.border_width);
 
-            if (@reduce(.Or, self.region.pos != new.pos)) self.dirty.pos = true;
-            if (@reduce(.Or, self.region.size != new.size)) self.dirty.size = true;
+            if (@reduce(.Or, self.region.pos != inner.pos)) self.dirty.pos = true;
+            if (@reduce(.Or, self.region.size != inner.size)) self.dirty.size = true;
 
             self.region = inner;
         }
@@ -237,7 +241,11 @@ pub const Seat = struct {
 
 const TagKeyData = struct {
     wm: *WindowManager,
-    bind: *KeyManager.KeyBind,
+};
+
+const UserKeyData = struct {
+    wm: *WindowManager,
+    action: action.Action,
 };
 
 const WindowManager = @This();
@@ -252,6 +260,7 @@ pub fn init(globals: *Globals, config: Config) WindowManager {
         .keys = .init(globals),
         .tag_keys = undefined, // initialized during setup
         .tag_keys_down = 0,
+        .global_user_keys = undefined // initialized during setup
     };
 }
 
@@ -265,12 +274,29 @@ pub fn setup(self: *WindowManager) !void {
     for (self.tag_keys, self.config.tag_keys.keys) |*tkey, conf| {
         tkey.* = .{
             .wm = self,
-            .bind = try self.keys.register(TagKeyData, .{
-                .keysym = conf.xkb,
-                .mods = self.config.tag_keys.mods.toRiver(),
-            }, onTagKeyEvent, tkey),
         };
-        tkey.bind.enable();
+
+        const bind = try self.keys.register(TagKeyData, .{
+            .keysym = conf.xkb,
+            .mods = self.config.tag_keys.mods.toRiver(),
+        }, onTagKeyEvent, tkey);
+        bind.enable();
+    }
+
+    self.global_user_keys = try self.globals.alloc.alloc(UserKeyData, self.config.keybinds.len);
+    errdefer self.globals.alloc.free(self.global_user_keys);
+
+    for (self.global_user_keys, self.config.keybinds) |*ukey, conf| {
+        ukey.* = .{
+            .wm = self,
+            .action = conf.action,
+        };
+
+        const bind = try self.keys.register(UserKeyData, .{
+            .mods = conf.mods.toRiver(),
+            .keysym = conf.key.xkb,
+        }, onGlobalUserKeyEvent, ukey);
+        bind.enable();
     }
 }
 
@@ -298,6 +324,22 @@ fn onTagKeyEvent(_: *river.XkbBindingV1, ev: river.XkbBindingV1.Event, keydat: *
         .released => {
             keydat.wm.tag_keys_down -|= 1;
         },
+        .stop_repeat => {},
+    }
+}
+
+fn onGlobalUserKeyEvent(
+    _: *river.XkbBindingV1,
+    ev: river.XkbBindingV1.Event,
+    keydat: *UserKeyData,
+) void {
+    switch (ev) {
+        .pressed => {
+            keydat.action.perform(keydat.wm) catch |e| {
+                std.log.err("Failed to perform global user keybind action: {}", .{e});
+            };
+        },
+        .released => {},
         .stop_repeat => {},
     }
 }

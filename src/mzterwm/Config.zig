@@ -6,6 +6,8 @@ const wayland = @import("wayland");
 const xkbcommon = @import("xkbcommon");
 const ziggy = @import("ziggy");
 
+const action = @import("action.zig");
+
 const TagSpace = @import("TagSpace.zig");
 
 const river = wayland.client.river;
@@ -35,6 +37,12 @@ gaps: struct {
     window: u31 = 4,
     output: u31 = 4,
 } = .{},
+
+keybinds: []const struct {
+    key: Keysym,
+    mods: Modifiers,
+    action: action.Action,
+},
 
 const Config = @This();
 
@@ -82,15 +90,27 @@ pub const Keysym = struct {
         keysym_buf[str_no_sentinel.len] = 0;
         const str: [:0]u8 = @ptrCast(keysym_buf[0..str_no_sentinel.len]);
 
-        const xkb_keysym: xkbcommon.Keysym = .fromName(str.ptr, .no_flags);
+        var xkb_keysym: xkbcommon.Keysym = .fromName(str.ptr, .no_flags);
 
         if (xkb_keysym == .NoSymbol) {
-            return parser.addError(.{
-                .unknown_field = .{
-                    .name = first_tok.loc.src(parser.code),
-                    .sel = first_tok.loc.getSelection(parser.code),
-                },
-            });
+            xkb_keysym = .fromName(str.ptr, .case_insensitive);
+
+            if (xkb_keysym == .NoSymbol) {
+                return parser.addError(.{
+                    .unknown_field = .{
+                        .name = first_tok.loc.src(parser.code),
+                        .sel = first_tok.loc.getSelection(parser.code),
+                    },
+                });
+            }
+
+            var buf: [128]u8 = undefined;
+            const sym_name = buf[0..@intCast(xkb_keysym.getName(&buf, buf.len))];
+
+            std.log.warn(
+                "Config specified keysym `{s}` with incorrect capitalization, should be `{s}`",
+                .{ str.ptr, sym_name },
+            );
         }
 
         return .{ .xkb = xkb_keysym };

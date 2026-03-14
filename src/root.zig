@@ -3,6 +3,8 @@ const wayland = @import("wayland");
 
 const wl = wayland.client.wl;
 
+pub const action = @import("mzterwm/action.zig");
+
 pub const Config = @import("mzterwm/Config.zig");
 pub const Globals = @import("mzterwm/Globals.zig");
 pub const KeyManager = @import("mzterwm/KeyManager.zig");
@@ -135,6 +137,20 @@ pub fn colorToRiver(color: @Vector(4, u8)) @Vector(4, u32) {
     const alpha_ratio: Ratio = .{ .val = color[3] };
     const prepremul: @Vector(4, u40) = @as(@Vector(4, u40), color) * @as(@Vector(4, u40), @splat(factor));
     return @truncate(alpha_ratio.scale(prepremul));
+}
+
+/// Rotate some focus index forward
+pub fn rotFocusFwd(focus: *usize, n: usize) void {
+    if (n == 0) return;
+
+    focus.* = if (focus.* >= n - 1) 0 else focus.* + 1;
+}
+
+/// Rotate some focus index backward
+pub fn rotFocusBck(focus: *usize, n: usize) void {
+    if (n == 0) return;
+
+    focus.* = if (focus.* == 0 or focus.* > n - 1) n - 1 else focus.* - 1;
 }
 
 test {
