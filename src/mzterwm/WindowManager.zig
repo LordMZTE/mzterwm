@@ -22,7 +22,8 @@ run_state: enum {
     graceful_shutdown,
 },
 outputs: std.ArrayList(*Output),
-windows: std.ArrayList(*Window),
+windows: std.DoublyLinkedList,
+window_pool: std.heap.MemoryPool(Window),
 keys: KeyManager,
 
 /// Index into `outputs` for the currently selected output.  This always has to be in bounds.
@@ -88,6 +89,7 @@ pub const Output = struct {
 
 pub const Window = struct {
     wm: *WindowManager,
+    winlist_node: std.DoublyLinkedList.Node,
     river: *river.WindowV1,
     node: *river.NodeV1,
 
@@ -138,7 +140,7 @@ pub const Window = struct {
         }
         self.node.destroy();
         self.river.destroy();
-        self.wm.globals.alloc.destroy(self);
+        self.wm.window_pool.destroy(self);
     }
 
     pub fn focus(self: *Window) void {
@@ -147,14 +149,19 @@ pub const Window = struct {
         }
     }
 
+    pub fn fromListNode(node: *std.DoublyLinkedList.Node) *Window {
+        return @alignCast(@fieldParentPtr("winlist_node", node));
+    }
+
     fn listener(_: *river.WindowV1, ev: river.WindowV1.Event, self: *Window) void {
         switch (ev) {
             .closed => {
-                for (self.wm.windows.items, 0..) |it, i| {
-                    if (self == it) {
-                        self.wm.windows.swapRemove(i).deinit();
-                        break;
-                    }
+                const tagspace = self.tag_space;
+                self.wm.windows.remove(&self.winlist_node);
+                self.deinit();
+
+                if (tagspace) |ts| {
+                    ts.commitFocus() catch @panic("OOM");
                 }
             },
             .dimensions_hint => |hint| {
@@ -207,8 +214,10 @@ pub const Seat = struct {
             .pointer_leave => {},
             .window_interaction => |wint| {
                 const rwin = wint.window orelse return;
-                const win, const idx = for (self.wm.windows.items, 0..) |win, i| {
-                    if (rwin == win.river) break .{ win, i };
+                var maybe_node = self.wm.windows.first;
+                const win = while (maybe_node) |node| : (maybe_node = node.next) {
+                    const w: *Window = .fromListNode(node);
+                    if (w.river == rwin) break w;
                 } else {
                     std.log.err(
                         "Got window interaction event for window taht isn't registered.",
@@ -223,9 +232,8 @@ pub const Seat = struct {
                     return;
                 };
 
-                const id_in_space = for (space.windows.items, 0..) |winid, i| {
-                    if (winid == idx) break i;
-                } else
+                const space_wins = space.getWindows() catch @panic("OOM");
+                const id_in_space = std.mem.indexOfScalar(*Window, space_wins, win) orelse
                     // This being reached would mean the window's tag_space field is set, but that
                     // space doesn't contain the window.  That's invalid state.
                     unreachable;
@@ -259,16 +267,18 @@ pub fn init(globals: *Globals, config: Config) WindowManager {
         .config = config,
         .run_state = .keep_running,
         .outputs = .empty,
-        .windows = .empty,
+        .windows = .{},
+        .window_pool = .init(globals.alloc),
         .keys = .init(globals),
         .tag_keys = undefined, // initialized during setup
         .tag_keys_down = 0,
-        .global_user_keys = undefined // initialized during setup
+        .global_user_keys = undefined, // initialized during setup
     };
 }
 
 /// Register listeners for window management.
 pub fn setup(self: *WindowManager) !void {
+    try self.window_pool.preheat(32);
     self.globals.rwm.setListener(*WindowManager, rwmListener, self);
 
     self.tag_keys = try self.globals.alloc.alloc(TagKeyData, self.config.tag_keys.keys.len);
@@ -358,10 +368,12 @@ pub fn deinit(self: *WindowManager) void {
     }
     self.outputs.deinit(self.globals.alloc);
 
-    for (self.windows.items) |win| {
+    var win_node = self.windows.first;
+    while (win_node) |node| : (win_node = node.next) {
+        const win: *Window = .fromListNode(node);
         win.deinit();
     }
-    self.windows.deinit(self.globals.alloc);
+    self.window_pool.deinit();
     self.keys.deinit();
     self.globals.alloc.free(self.tag_keys);
 }
@@ -406,8 +418,8 @@ fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
         .session_locked => {},
         .session_unlocked => {},
         .window => |win| {
-            const window = try self.globals.alloc.create(Window);
-            errdefer self.globals.alloc.destroy(window);
+            const window = try self.window_pool.create();
+            errdefer self.window_pool.destroy(window);
 
             var tag_space: ?*TagSpace = null;
             if (self.selectedOutput()) |out| {
@@ -416,6 +428,7 @@ fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
             }
 
             window.* = .{
+                .winlist_node = .{},
                 .wm = self,
                 .river = win.id,
                 .node = try win.id.getNode(),
@@ -430,7 +443,7 @@ fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
             };
 
             win.id.setListener(*Window, Window.listener, window);
-            try self.windows.append(self.globals.alloc, window);
+            self.windows.prepend(&window.winlist_node);
         },
         .output => |outp| {
             const output = try self.globals.alloc.create(Output);
@@ -473,8 +486,10 @@ fn performManage(self: *WindowManager) !void {
             windows,
         );
 
-        for (windows) |winid| {
-            const win = self.windows.items[winid];
+        var maybe_node = self.windows.first;
+        while (maybe_node) |node| : (maybe_node = node.next) {
+            const win: *Window = .fromListNode(node);
+
             if (!win.render.set_fixed_props) {
                 // TODO: this is a lazy hack
                 win.river.setTiled(.{
@@ -506,7 +521,10 @@ fn performRender(self: *WindowManager) !void {
     defer self.globals.rwm.renderFinish();
 
     // hide/show windows
-    for (self.windows.items) |win| {
+    var maybe_node = self.windows.first;
+    while (maybe_node) |node| : (maybe_node = node.next) {
+        const win: *Window = .fromListNode(node);
+
         if (win.tag_space) |tagspace| {
             const should_hide = tagspace.mask & win.mask == 0;
             if (should_hide != win.render.hidden) {
@@ -521,9 +539,7 @@ fn performRender(self: *WindowManager) !void {
 
     // update properties of windows in each tagspace
     for (self.outputs.items) |outp| {
-        for (try outp.tag_space.getWindows()) |winid| {
-            const win = self.windows.items[winid];
-
+        for (try outp.tag_space.getWindows()) |win| {
             if (win.render.dirty.pos) {
                 win.node.setPosition(win.render.region.pos[0], win.render.region.pos[1]);
                 win.render.dirty.pos = false;

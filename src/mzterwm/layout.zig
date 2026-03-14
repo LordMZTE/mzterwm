@@ -7,7 +7,7 @@ pub const Layout = union(enum) {
         self: *Layout,
         wm: *mzterwm.WindowManager,
         region: mzterwm.Region,
-        windows: []const usize,
+        windows: []const *mzterwm.WindowManager.Window,
     ) !void {
         return switch (self.*) {
             inline else => |*delegate| delegate.performLayout(wm, region, windows),

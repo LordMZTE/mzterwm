@@ -18,18 +18,18 @@ pub fn performLayout(
     self: *Focus,
     wm: *mzterwm.WindowManager,
     region: mzterwm.Region,
-    windows: []const usize,
+    windows: []const *mzterwm.WindowManager.Window,
 ) !void {
     const gap = wm.config.gaps.window;
     if (windows.len == 0) return;
     if (windows.len == 1) {
-        wm.windows.items[windows[0]].render.updateRegion(region.inset(gap));
+        windows[0].render.updateRegion(region.inset(gap));
         return;
     }
 
     const primary, const secondary = region.slice(self.primary_ratio, self.direction);
 
-    wm.windows.items[windows[0]].render.updateRegion(primary.inset(gap));
+    windows[0].render.updateRegion(primary.inset(gap));
 
     const secondary_off = switch (self.direction) {
         .row => secondary.size[1] / @as(u31, @truncate(windows.len - 1)),
@@ -40,7 +40,7 @@ pub fn performLayout(
         .col => .{ secondary_off, secondary.size[1] },
     };
 
-    for (windows[1..], 0..) |winid, i_usize| {
+    for (windows[1..], 0..) |win, i_usize| {
         const i: u31 = @truncate(i_usize);
         const secondary_region: mzterwm.Region = switch (self.direction) {
             .row => .{
@@ -53,6 +53,6 @@ pub fn performLayout(
             },
         };
 
-        wm.windows.items[winid].render.updateRegion(secondary_region.inset(gap));
+        win.render.updateRegion(secondary_region.inset(gap));
     }
 }

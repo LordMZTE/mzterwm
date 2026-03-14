@@ -25,7 +25,7 @@ tagdata: [bitwidth]TagData,
 /// Windows in this TagSpace.  This is a sublist of indices into wm.windows.
 /// This should only be considered meaningful if windows_valid is true.  Otherwise, it must be
 /// recomputed.
-windows: std.ArrayList(usize),
+windows: std.ArrayList(*WindowManager.Window),
 windows_valid: bool,
 
 /// Index of the window that is currently selected in windows.
@@ -68,8 +68,8 @@ pub fn deinit(self: *TagSpace) void {
 }
 
 pub fn evacuateTo(self: *TagSpace, other: ?*TagSpace) !void {
-    for (try self.getWindows()) |winid| {
-        self.wm.windows.items[winid].tag_space = other;
+    for (try self.getWindows()) |win| {
+        win.tag_space = other;
     }
     if (other) |o| o.windows_valid = false;
     self.windows_valid = false;
@@ -77,18 +77,24 @@ pub fn evacuateTo(self: *TagSpace, other: ?*TagSpace) !void {
 
 /// Gets or computes the list of window indices in this TagSpace.  May also update window state for
 /// stuff like border color.
-pub fn getWindows(self: *TagSpace) error{OutOfMemory}![]usize {
+pub fn getWindows(self: *TagSpace) error{OutOfMemory}![]*WindowManager.Window {
     if (self.windows_valid) return self.windows.items;
 
     self.windows.clearRetainingCapacity();
-    for (self.wm.windows.items, 0..) |win, i| {
+
+    var i: u32 = 0;
+    var maybe_node = self.wm.windows.first;
+    while (maybe_node) |node| : (maybe_node = node.next) {
+        const win: *WindowManager.Window = .fromListNode(node);
+
         if (win.tag_space != self or win.mask & self.mask == 0) continue;
 
-        try self.windows.append(self.wm.globals.alloc, i);
+        try self.windows.append(self.wm.globals.alloc, win);
         win.render.updateBorderColor(if (i == self.selected_window)
             self.wm.config.borders.focus_color.vec
         else
             self.wm.config.borders.base_color.vec);
+        i += 1;
     }
 
     self.windows_valid = true;
@@ -104,5 +110,5 @@ pub fn commitFocus(self: *TagSpace) error{OutOfMemory}!void {
         return;
     }
 
-    self.wm.windows.items[wins[self.selected_window]].focus();
+    wins[self.selected_window].focus();
 }
