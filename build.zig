@@ -19,12 +19,14 @@ pub fn build(b: *std.Build) void {
     if (proto_only) return;
 
     const ziggy_dep = b.lazyDependency("ziggy", .{ .target = target, .optimize = optimize }) orelse return;
+    const xkbcommon_dep = b.lazyDependency("xkbcommon", .{}) orelse return;
 
     const mzterwm_mod = b.addModule("mzterwm", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .imports = &.{
             .{ .name = "ziggy", .module = ziggy_dep.module("ziggy") },
+            .{ .name = "xkbcommon", .module = xkbcommon_dep.module("xkbcommon") },
         },
     });
 

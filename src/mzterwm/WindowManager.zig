@@ -4,8 +4,9 @@ const std = @import("std");
 const wayland = @import("wayland");
 
 const Globals = @import("Globals.zig");
-const TagSpace = @import("TagSpace.zig");
+const KeyManager = @import("KeyManager.zig");
 const Region = @import("../root.zig").Region;
+const TagSpace = @import("TagSpace.zig");
 
 const river = wayland.client.river;
 
@@ -14,9 +15,10 @@ run_state: enum {
     keep_running,
     errored,
     graceful_shutdown,
-} = .keep_running,
-outputs: std.ArrayList(*Output) = .empty,
-windows: std.ArrayList(*Window) = .empty,
+},
+outputs: std.ArrayList(*Output),
+windows: std.ArrayList(*Window),
+keys: KeyManager,
 
 // Index into `outputs` for the currently selected output.  This always has to be in bounds.
 selected_output: usize = 0,
@@ -36,23 +38,19 @@ pub const Output = struct {
     fn listener(_: *river.OutputV1, ev: river.OutputV1.Event, self: *Output) void {
         switch (ev) {
             .removed => {
-                if (self.wm.outputs.items.len <= 1) @panic("last output removed");
-
-                // If we have the last output in our list selected, then would end up with the index
-                // being out-of-bounds.  Shift it over by one, so we still have the same output
-                // selected as before.  If the last one also happens to be the one being removed,
-                // we'll and up selecting the output before that which is also fine.
-                if (self.wm.selected_output >= self.wm.outputs.items.len) {
-                    self.wm.selected_output = self.wm.outputs.items.len - 1;
-                }
-
                 for (self.wm.outputs.items, 0..) |other, i| {
                     if (other == self) {
                         const old = self.wm.outputs.orderedRemove(i);
                         defer old.deinit();
 
+                        if (self.wm.selected_output > i) {
+                            self.wm.selected_output -|= 1;
+                        }
+
                         old.tag_space.evacuateTo(
-                            &self.wm.outputs.items[self.wm.selected_output].tag_space,
+                            // Move windows to other remaining outputs or limbo if there are no outputs
+                            // left.
+                            if (self.wm.selectedOutput()) |outp| &outp.tag_space else null,
                         ) catch @panic("OOM");
 
                         break;
@@ -109,10 +107,21 @@ pub const Window = struct {
         }
     };
 
+    pub fn deinit(self: *Window) void {
+        self.node.destroy();
+        self.river.destroy();
+        self.wm.globals.alloc.destroy(self);
+    }
+
     fn listener(_: *river.WindowV1, ev: river.WindowV1.Event, self: *Window) void {
         switch (ev) {
             .closed => {
-                // TODO: find out where this window is even stored and remove it from there.
+                for (self.wm.windows.items, 0..) |it, i| {
+                    if (self == it) {
+                        self.wm.windows.swapRemove(i).deinit();
+                        break;
+                    }
+                }
             },
             .dimensions_hint => |hint| {
                 // take whatever size the stupid window wants to be, and throw that straight in the
@@ -145,7 +154,43 @@ pub const Window = struct {
     }
 };
 
+pub const Seat = struct {
+    wm: *WindowManager,
+    river: *river.SeatV1,
+
+    pub fn deinit(self: *Seat) void {
+        self.river.destroy();
+        self.wm.globals.alloc.destroy(self);
+    }
+
+    fn listener(_: *river.SeatV1, ev: river.SeatV1.Event, self: *Seat) void {
+        switch (ev) {
+            .removed => {
+                self.wm.keys.seatRemoved(self);
+            },
+            .wl_seat => {},
+            .pointer_enter => {},
+            .pointer_leave => {},
+            .window_interaction => {},
+            .shell_surface_interaction => {},
+            .op_delta => {},
+            .op_release => {},
+            .pointer_position => {},
+        }
+    }
+};
+
 const WindowManager = @This();
+
+pub fn init(globals: *Globals) WindowManager {
+    return .{
+        .globals = globals,
+        .run_state = .keep_running,
+        .outputs = .empty,
+        .windows = .empty,
+        .keys = .init(globals),
+    };
+}
 
 /// Register listeners for window management.
 pub fn setup(self: *WindowManager) void {
@@ -162,6 +207,7 @@ pub fn deinit(self: *WindowManager) void {
         outp.deinit();
     }
     self.outputs.deinit(self.globals.alloc);
+    self.keys.deinit();
 }
 
 pub fn selectedOutput(self: *WindowManager) ?*Output {
@@ -234,7 +280,18 @@ fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
             outp.id.setListener(*Output, Output.listener, output);
             try self.outputs.append(self.globals.alloc, output);
         },
-        .seat => {},
+        .seat => |river_seat| {
+            const seat = try self.globals.alloc.create(Seat);
+            errdefer self.globals.alloc.destroy(seat);
+
+            seat.* = .{
+                .wm = self,
+                .river = river_seat.id,
+            };
+
+            river_seat.id.setListener(*Seat, Seat.listener, seat);
+            try self.keys.seatAdded(seat);
+        },
     }
 }
 

@@ -14,6 +14,10 @@
             .hash = "ziggy-0.1.0-kTg8v5pABgDztlefWHceH-Sh8tVveguFC61QkmLkIRaA",
             .lazy = true,
         },
+        .xkbcommon = .{
+            .url = "git+https://codeberg.org/ifreund/zig-xkbcommon?ref=main#a10651157cb1545ee3ae3818b4c7437c64d16462",
+            .hash = "xkbcommon-0.4.0-dev-VDqIe3bUAQB9reSurmSJxQjiQ6bnpekmOxIp_077GhVZ",
+        },
     },
 
     .paths = .{""}, // TODO

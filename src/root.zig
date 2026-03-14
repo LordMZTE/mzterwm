@@ -4,6 +4,7 @@ const wayland = @import("wayland");
 const wl = wayland.client.wl;
 
 pub const Globals = @import("mzterwm/Globals.zig");
+pub const KeyManager = @import("mzterwm/KeyManager.zig");
 pub const Layout = @import("mzterwm/layout.zig").Layout;
 pub const TagSpace = @import("mzterwm/TagSpace.zig");
 pub const WindowManager = @import("mzterwm/WindowManager.zig");

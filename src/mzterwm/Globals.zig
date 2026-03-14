@@ -9,6 +9,7 @@ const river = wayland.client.river;
 /// An allocator which is stored here so we can make allocations from the registry listener.
 alloc: std.mem.Allocator,
 rwm: *river.WindowManagerV1,
+xkb_binds: *river.XkbBindingsV1,
 outputs: std.ArrayList(Output),
 
 const Globals = @This();
@@ -17,6 +18,7 @@ const PartialOrGlobals = union(enum) {
     partial: struct {
         alloc: std.mem.Allocator,
         rwm: ?*river.WindowManagerV1 = null,
+        xkb_binds: ?*river.XkbBindingsV1 = null,
         outputs: std.ArrayList(Output) = .empty,
     },
     globals: Globals,
@@ -48,7 +50,10 @@ pub fn setupListenerAndCollect(
         try mzterwm.roundtrip(dpy);
         break :initial .{
             .alloc = alloc,
-            .rwm = pog.partial.rwm orelse return complainAboutMissingGlobal(river.WindowManagerV1),
+            .rwm = pog.partial.rwm orelse
+                return complainAboutMissingGlobal(river.WindowManagerV1),
+            .xkb_binds = pog.partial.xkb_binds orelse
+                return complainAboutMissingGlobal(river.XkbBindingsV1),
             .outputs = pog.partial.outputs,
         };
     };
@@ -80,6 +85,12 @@ fn regListener(reg: *wl.Registry, ev: wl.Registry.Event, pog: *PartialOrGlobals)
                         g.name,
                         river.WindowManagerV1,
                         river.WindowManagerV1.generated_version,
+                    ) catch @panic("OOM");
+                } else if (std.mem.orderZ(u8, g.interface, river.XkbBindingsV1.interface.name) == .eq) {
+                    self.xkb_binds = reg.bind(
+                        g.name,
+                        river.XkbBindingsV1,
+                        river.XkbBindingsV1.generated_version,
                     ) catch @panic("OOM");
                 }
             },

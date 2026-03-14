@@ -18,7 +18,7 @@ pub fn main() !void {
     var globals: *mzterwm.Globals = try .setupListenerAndCollect(alloc, reg, dpy);
     defer globals.deinit();
 
-    var wm: mzterwm.WindowManager = .{ .globals = globals };
+    var wm: mzterwm.WindowManager = .init(globals);
     defer wm.deinit();
     wm.setup();
 

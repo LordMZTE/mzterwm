@@ -14,3 +14,4 @@ also view multiple of them at once.
 - [ ] Waybar plugin
 - [ ] IPC socket
 - [ ] Layer shell WM
+- [ ] Focusing Windows
