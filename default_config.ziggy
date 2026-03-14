@@ -1,0 +1,12 @@
+// Configuration for keys that are used to switch tags.
+// Tags work similar to tags in river-classic, but the keyboard configuration is fancier.
+//
+// To begin switching tags, hold down the modifiers configured below, and while holding them down,
+// also hold down the keys for each tag you want to activate at the same time.  The first tag key
+// you press will become your primary workspace, which governs the layout mode you'll get.
+.tag_keys = {
+    // The modifier key you have to hold down to begin tag switching.
+    .mods = { .meta = true },
+    // The keys for the tags you want to switch to, in increasing order for each tag.
+    .keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9"],
+},

@@ -2,7 +2,9 @@
 
 const std = @import("std");
 const wayland = @import("wayland");
+const xkbcommon = @import("xkbcommon");
 
+const Config = @import("Config.zig");
 const Globals = @import("Globals.zig");
 const KeyManager = @import("KeyManager.zig");
 const Region = @import("../root.zig").Region;
@@ -11,6 +13,7 @@ const TagSpace = @import("TagSpace.zig");
 const river = wayland.client.river;
 
 globals: *Globals,
+config: Config,
 run_state: enum {
     keep_running,
     errored,
@@ -20,8 +23,14 @@ outputs: std.ArrayList(*Output),
 windows: std.ArrayList(*Window),
 keys: KeyManager,
 
-// Index into `outputs` for the currently selected output.  This always has to be in bounds.
+/// Index into `outputs` for the currently selected output.  This always has to be in bounds.
 selected_output: usize = 0,
+
+/// A slice containing each workspace key.
+tag_keys: []TagKeyData,
+
+/// The number of tag keys the user is holding down at the moment.
+tag_keys_down: u16,
 
 pub const Output = struct {
     wm: *WindowManager,
@@ -32,6 +41,7 @@ pub const Output = struct {
 
     pub fn deinit(self: *Output) void {
         self.river.destroy();
+        self.tag_space.deinit();
         self.wm.globals.alloc.destroy(self);
     }
 
@@ -99,7 +109,6 @@ pub const Window = struct {
         } = .{},
 
         pub fn updateRegion(self: *RenderState, new: Region) void {
-            std.debug.print("{} ~> {}\n", .{ self.region.size, new.size });
             if (@reduce(.Or, self.region.pos != new.pos)) self.dirty.pos = true;
             if (@reduce(.Or, self.region.size != new.size)) self.dirty.size = true;
 
@@ -180,21 +189,71 @@ pub const Seat = struct {
     }
 };
 
+const TagKeyData = struct {
+    wm: *WindowManager,
+    bind: *KeyManager.KeyBind,
+};
+
 const WindowManager = @This();
 
-pub fn init(globals: *Globals) WindowManager {
+pub fn init(globals: *Globals, config: Config) WindowManager {
     return .{
         .globals = globals,
+        .config = config,
         .run_state = .keep_running,
         .outputs = .empty,
         .windows = .empty,
         .keys = .init(globals),
+        .tag_keys = undefined, // initialized during setup
+        .tag_keys_down = 0,
     };
 }
 
 /// Register listeners for window management.
-pub fn setup(self: *WindowManager) void {
+pub fn setup(self: *WindowManager) !void {
     self.globals.rwm.setListener(*WindowManager, rwmListener, self);
+
+    self.tag_keys = try self.globals.alloc.alloc(TagKeyData, self.config.tag_keys.keys.len);
+    errdefer self.globals.alloc.free(self.tag_keys);
+
+    for (self.tag_keys, self.config.tag_keys.keys) |*tkey, conf| {
+        tkey.* = .{
+            .wm = self,
+            .bind = try self.keys.register(TagKeyData, .{
+                .keysym = conf.xkb,
+                .mods = self.config.tag_keys.mods.toRiver(),
+            }, onTagKeyEvent, tkey),
+        };
+        tkey.bind.enable();
+    }
+}
+
+fn onTagKeyEvent(_: *river.XkbBindingV1, ev: river.XkbBindingV1.Event, keydat: *TagKeyData) void {
+    const tag: TagSpace.TagIdx = @intCast(keydat - keydat.wm.tag_keys.ptr);
+    switch (ev) {
+        .pressed => {
+            keydat.wm.tag_keys_down +|= 1;
+            const outp = keydat.wm.selectedOutput() orelse return;
+            outp.tag_space.windows_valid = false;
+            if (keydat.wm.tag_keys_down == 1) {
+                // This is the first key being pressed this switch operation.  Set primary and focus
+                // only tags we're now subsequently pressing.
+                outp.tag_space.primary = tag;
+                outp.tag_space.mask = @as(TagSpace.Mask, 1) << tag;
+            } else {
+                outp.tag_space.mask |= @as(TagSpace.Mask, 1) << tag;
+            }
+
+            std.log.debug("tags switched; primary: {}, mask: {b}", .{
+                outp.tag_space.primary,
+                outp.tag_space.mask,
+            });
+        },
+        .released => {
+            keydat.wm.tag_keys_down -|= 1;
+        },
+        .stop_repeat => {},
+    }
 }
 
 /// Initiate a shutdown
@@ -207,7 +266,13 @@ pub fn deinit(self: *WindowManager) void {
         outp.deinit();
     }
     self.outputs.deinit(self.globals.alloc);
+
+    for (self.windows.items) |win| {
+        win.deinit();
+    }
+    self.windows.deinit(self.globals.alloc);
     self.keys.deinit();
+    self.globals.alloc.free(self.tag_keys);
 }
 
 pub fn selectedOutput(self: *WindowManager) ?*Output {

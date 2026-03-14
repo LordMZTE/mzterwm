@@ -8,6 +8,7 @@ const WindowManager = @import("WindowManager.zig");
 
 pub const bitwidth = 32;
 pub const Mask = std.meta.Int(.unsigned, bitwidth);
+pub const TagIdx = std.math.Log2Int(Mask);
 
 /// The parent window manager
 wm: *WindowManager,
@@ -16,7 +17,7 @@ wm: *WindowManager,
 mask: Mask,
 
 /// The tag that is currently considered primary.  This must be one that is also in mask.
-primary: std.math.Log2Int(Mask),
+primary: TagIdx,
 
 /// Per-tag data.  This is typically indexed by the primary tag.
 tagdata: [bitwidth]TagData,
@@ -60,12 +61,8 @@ pub fn init(wm: *WindowManager) TagSpace {
 }
 
 pub fn deinit(self: *TagSpace) void {
-    for (self.tagdata) |dat| {
+    for (&self.tagdata) |*dat| {
         dat.deinit();
-    }
-
-    for (self.windows.items) |win| {
-        win.deinit();
     }
     self.windows.deinit(self.wm.globals.alloc);
 }

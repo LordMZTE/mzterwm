@@ -29,6 +29,7 @@
           wayland
           wayland-scanner
           wayland-protocols
+          libxkbcommon
         ];
 
         preBuild = ''
