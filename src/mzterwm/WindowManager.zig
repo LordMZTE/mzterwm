@@ -135,9 +135,6 @@ pub const Window = struct {
     };
 
     pub fn deinit(self: *Window) void {
-        if (self.tag_space) |ts| {
-            ts.windows_valid = false;
-        }
         self.node.destroy();
         self.river.destroy();
         self.wm.window_pool.destroy(self);
@@ -156,13 +153,24 @@ pub const Window = struct {
     fn listener(_: *river.WindowV1, ev: river.WindowV1.Event, self: *Window) void {
         switch (ev) {
             .closed => {
-                const tagspace = self.tag_space;
-                self.wm.windows.remove(&self.winlist_node);
-                self.deinit();
-
-                if (tagspace) |ts| {
+                // Invalidate the tag space windows, and, if the removed window is before the
+                // focused one, shift over the selection by one so it stays on the same window.
+                if (self.tag_space) |ts| {
+                    const ts_wins = ts.getWindows() catch @panic("OOM");
+                    self.wm.windows.remove(&self.winlist_node);
+                    ts.windows_valid = false;
+                    const this_idx = std.mem.indexOfScalar(*Window, ts_wins, self) orelse unreachable;
+                    if (ts_wins.len > 1 and ts.selected_window >= ts_wins.len - 1) {
+                        ts.selected_window = ts_wins.len - 2;
+                    } else if (ts.selected_window > this_idx) {
+                        ts.selected_window -= 1;
+                    }
                     ts.commitFocus() catch @panic("OOM");
+                } else {
+                    self.wm.windows.remove(&self.winlist_node);
                 }
+
+                self.deinit();
             },
             .dimensions_hint => |hint| {
                 // take whatever size the stupid window wants to be, and throw that straight in the
@@ -421,11 +429,7 @@ fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
             const window = try self.window_pool.create();
             errdefer self.window_pool.destroy(window);
 
-            var tag_space: ?*TagSpace = null;
-            if (self.selectedOutput()) |out| {
-                tag_space = &out.tag_space;
-                tag_space.?.windows_valid = false;
-            }
+            const tag_space = if (self.selectedOutput()) |out| &out.tag_space else null;
 
             window.* = .{
                 .winlist_node = .{},
@@ -444,6 +448,15 @@ fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
 
             win.id.setListener(*Window, Window.listener, window);
             self.windows.prepend(&window.winlist_node);
+
+            if (tag_space) |ts| {
+                // This is somewhat unintuitive.  Since we'll rebuild the space's window list and
+                // the new window has just been prepended, this results in the new window being
+                // focused.
+                ts.selected_window = 0;
+                ts.windows_valid = false;
+                try ts.commitFocus();
+            }
         },
         .output => |outp| {
             const output = try self.globals.alloc.create(Output);
@@ -459,6 +472,7 @@ fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
 
             outp.id.setListener(*Output, Output.listener, output);
             try self.outputs.append(self.globals.alloc, output);
+            try output.tag_space.commitFocus();
         },
         .seat => |river_seat| {
             const seat = try self.globals.alloc.create(Seat);
@@ -471,6 +485,15 @@ fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
 
             river_seat.id.setListener(*Seat, Seat.listener, seat);
             try self.keys.seatAdded(seat);
+
+            // If there's an output selected and its tag space has a focused window, make this seat
+            // focus it.
+            if (self.selectedOutput()) |outp| {
+                const space_wins = try outp.tag_space.getWindows();
+                if (outp.tag_space.selected_window < space_wins.len) {
+                    river_seat.id.focusWindow(space_wins[outp.tag_space.selected_window].river);
+                }
+            }
         },
     }
 }
