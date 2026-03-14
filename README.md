@@ -7,15 +7,15 @@ also view multiple of them at once.
 ## TODO
 
 - [x] Focus layout (rivertile-like)
-- [ ] Gaps
-- [ ] Tags
+- [x] Gaps
+- [x] Tags
 - [ ] Output management with ability to restore state after output reconnect
-- [ ] Config file
+- [x] Config file
 - [ ] Waybar plugin
 - [ ] IPC socket
 - [ ] Layer shell WM
-- [ ] Focusing Windows
-- [ ] Multi-Seat
+- [x] Focusing Windows
+- [ ] ~Multi-Seat~
     - mzterwm currently contains a tested and half-assed attempt at not exploding with multiple
       seats. Stuff like each seat having it's own focused window and such is entirely unimplemented
       and probably won't be implemented unless someone steps up.
