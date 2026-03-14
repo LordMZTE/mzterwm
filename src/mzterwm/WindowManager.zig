@@ -133,6 +133,9 @@ pub const Window = struct {
     };
 
     pub fn deinit(self: *Window) void {
+        if (self.tag_space) |ts| {
+            ts.windows_valid = false;
+        }
         self.node.destroy();
         self.river.destroy();
         self.wm.globals.alloc.destroy(self);
