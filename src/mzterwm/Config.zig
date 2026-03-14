@@ -31,6 +31,11 @@ borders: struct {
     focus_color: Color = .{ .vec = .{ 0xff, 0x00, 0xff, 0xff } },
 } = .{},
 
+gaps: struct {
+    window: u31 = 4,
+    output: u31 = 4,
+} = .{},
+
 const Config = @This();
 
 pub const Modifiers = packed struct {

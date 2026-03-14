@@ -83,6 +83,14 @@ pub const Region = struct {
         return @reduce(.And, point >= self.pos) and
             @reduce(.And, point <= corner);
     }
+
+    pub fn inset(self: Region, size: u31) Region {
+        const size_vec: @Vector(2, u31) = @splat(size);
+        return .{
+            .pos = self.pos +| size_vec,
+            .size = self.size -| size_vec * @as(@Vector(2, u31), @splat(2)),
+        };
+    }
 };
 
 /// An 8-bit fixed-point ratio.

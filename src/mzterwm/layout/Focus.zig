@@ -20,15 +20,16 @@ pub fn performLayout(
     region: mzterwm.Region,
     windows: []const usize,
 ) !void {
+    const gap = wm.config.gaps.window;
     if (windows.len == 0) return;
     if (windows.len == 1) {
-        wm.windows.items[windows[0]].render.updateRegion(region);
+        wm.windows.items[windows[0]].render.updateRegion(region.inset(gap));
         return;
     }
 
     const primary, const secondary = region.slice(self.primary_ratio, self.direction);
 
-    wm.windows.items[windows[0]].render.updateRegion(primary);
+    wm.windows.items[windows[0]].render.updateRegion(primary.inset(gap));
 
     const secondary_off = switch (self.direction) {
         .row => secondary.size[1] / @as(u31, @truncate(windows.len - 1)),
@@ -52,6 +53,6 @@ pub fn performLayout(
             },
         };
 
-        wm.windows.items[winid].render.updateRegion(secondary_region);
+        wm.windows.items[winid].render.updateRegion(secondary_region.inset(gap));
     }
 }

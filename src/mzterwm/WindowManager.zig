@@ -111,10 +111,7 @@ pub const Window = struct {
 
         /// Updates the region this whole window, including borders, should take up.
         pub fn updateRegion(self: *RenderState, new: mzterwm.Region) void {
-            const inner: mzterwm.Region = .{
-                .pos = new.pos +| @as(@Vector(2, u31), @splat(self.border_width)),
-                .size = new.size -| @as(@Vector(2, u31), @splat(self.border_width * 2)),
-            };
+            const inner = new.inset(self.border_width);
 
             if (@reduce(.Or, self.region.pos != new.pos)) self.dirty.pos = true;
             if (@reduce(.Or, self.region.size != new.size)) self.dirty.size = true;
@@ -427,7 +424,7 @@ fn performManage(self: *WindowManager) !void {
         const windows = try outp.tag_space.getWindows();
         try outp.tag_space.tagdata[outp.tag_space.primary].layout.performLayout(
             self,
-            outp.region,
+            outp.region.inset(self.config.gaps.output),
             windows,
         );
 

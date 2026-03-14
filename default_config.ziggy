@@ -19,3 +19,10 @@
     // The color a window border will have when the window is focused.
     .focus_color = "ff00ffff",
 },
+
+.gaps = {
+    // The size of gaps that are placed around each window on every side.
+    .window = 4,
+    // The size of gaps that are placed on every output around the windows.
+    .output = 4,
+},
