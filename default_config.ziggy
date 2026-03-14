@@ -10,3 +10,12 @@
     // The keys for the tags you want to switch to, in increasing order for each tag.
     .keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9"],
 },
+
+.borders = {
+    // Width of borders around windows.
+    .width = 4,
+    // The color a window border will have nothing's going on with the window.
+    .base_color = "808080ff",
+    // The color a window border will have when the window is focused.
+    .focus_color = "ff00ffff",
+},

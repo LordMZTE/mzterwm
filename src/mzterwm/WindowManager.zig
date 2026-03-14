@@ -3,11 +3,11 @@
 const std = @import("std");
 const wayland = @import("wayland");
 const xkbcommon = @import("xkbcommon");
+const mzterwm = @import("../root.zig");
 
 const Config = @import("Config.zig");
 const Globals = @import("Globals.zig");
 const KeyManager = @import("KeyManager.zig");
-const Region = @import("../root.zig").Region;
 const TagSpace = @import("TagSpace.zig");
 
 const river = wayland.client.river;
@@ -35,7 +35,7 @@ tag_keys_down: u16,
 pub const Output = struct {
     wm: *WindowManager,
     river: *river.OutputV1,
-    region: Region,
+    region: mzterwm.Region,
     wl_output_name: u32,
     tag_space: TagSpace,
 
@@ -98,21 +98,36 @@ pub const Window = struct {
     /// A struct that stores data about the window the we decide and need to tell River about.
     /// Some fields of this are updated during a manage sequence, others during a render sequence
     pub const RenderState = struct {
-        region: Region = .zero,
+        region: mzterwm.Region = .zero,
         hidden: bool = false,
-        border_color: [4]u8 = @splat(0),
         set_fixed_props: bool = false,
+        border_width: u31 = 0,
+        border_color: @Vector(4, u8) = @splat(0),
         dirty: packed struct {
             pos: bool = false,
             size: bool = false,
-            border_color: bool = false,
+            border: bool = false,
         } = .{},
 
-        pub fn updateRegion(self: *RenderState, new: Region) void {
+        /// Updates the region this whole window, including borders, should take up.
+        pub fn updateRegion(self: *RenderState, new: mzterwm.Region) void {
+            const inner: mzterwm.Region = .{
+                .pos = new.pos +| @as(@Vector(2, u31), @splat(self.border_width)),
+                .size = new.size -| @as(@Vector(2, u31), @splat(self.border_width * 2)),
+            };
+
             if (@reduce(.Or, self.region.pos != new.pos)) self.dirty.pos = true;
             if (@reduce(.Or, self.region.size != new.size)) self.dirty.size = true;
 
-            self.region = new;
+            self.region = inner;
+        }
+
+        pub fn updateBorderColor(self: *RenderState, new: @Vector(4, u8)) void {
+            if (self.border_width == 0) return;
+            if (@reduce(.Or, self.border_color != new)) {
+                self.dirty.border = true;
+                self.border_color = new;
+            }
         }
     };
 
@@ -120,6 +135,12 @@ pub const Window = struct {
         self.node.destroy();
         self.river.destroy();
         self.wm.globals.alloc.destroy(self);
+    }
+
+    pub fn focus(self: *Window) void {
+        for (self.wm.keys.seats.items) |seat| {
+            seat.river.focusWindow(self.river);
+        }
     }
 
     fn listener(_: *river.WindowV1, ev: river.WindowV1.Event, self: *Window) void {
@@ -180,7 +201,35 @@ pub const Seat = struct {
             .wl_seat => {},
             .pointer_enter => {},
             .pointer_leave => {},
-            .window_interaction => {},
+            .window_interaction => |wint| {
+                const rwin = wint.window orelse return;
+                const win, const idx = for (self.wm.windows.items, 0..) |win, i| {
+                    if (rwin == win.river) break .{ win, i };
+                } else {
+                    std.log.err(
+                        "Got window interaction event for window taht isn't registered.",
+                        .{},
+                    );
+                    return;
+                };
+
+                const space = win.tag_space orelse {
+                    std.log.err("Got window interaction event for window that's in limbo.  " ++
+                        "How'd you even get your pointer there?", .{});
+                    return;
+                };
+
+                const id_in_space = for (space.windows.items, 0..) |winid, i| {
+                    if (winid == idx) break i;
+                } else
+                    // This being reached would mean the window's tag_space field is set, but that
+                    // space doesn't contain the window.  That's invalid state.
+                    unreachable;
+
+                space.selected_window = id_in_space;
+                space.windows_valid = false;
+                space.commitFocus() catch @panic("OOM");
+            },
             .shell_surface_interaction => {},
             .op_delta => {},
             .op_release => {},
@@ -282,6 +331,13 @@ pub fn selectedOutput(self: *WindowManager) ?*Output {
     return self.outputs.items[self.selected_output];
 }
 
+/// Tell River to clear the focus.
+pub fn unfocus(self: *WindowManager) void {
+    for (self.keys.seats.items) |seat| {
+        seat.river.clearFocus();
+    }
+}
+
 fn rwmListener(
     _: *river.WindowManagerV1,
     ev: river.WindowManagerV1.Event,
@@ -324,7 +380,11 @@ fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
                 .tag_space = tag_space,
                 .mask = if (tag_space) |ts| @as(TagSpace.Mask, 1) << ts.primary else 1,
                 .size = @splat(0),
-                .render = .{},
+                .render = .{
+                    .border_width = self.config.borders.width,
+                    .border_color = self.config.borders.focus_color.vec,
+                    .dirty = .{ .border = self.config.borders.width != 0 },
+                },
             };
 
             win.id.setListener(*Window, Window.listener, window);
@@ -425,6 +485,25 @@ fn performRender(self: *WindowManager) !void {
             if (win.render.dirty.pos) {
                 win.node.setPosition(win.render.region.pos[0], win.render.region.pos[1]);
                 win.render.dirty.pos = false;
+            }
+
+            const color = mzterwm.colorToRiver(win.render.border_color);
+
+            if (win.render.dirty.border) {
+                win.river.setBorders(
+                    .{
+                        .top = true,
+                        .bottom = true,
+                        .left = true,
+                        .right = true,
+                    },
+                    win.render.border_width,
+                    color[0],
+                    color[1],
+                    color[2],
+                    color[3],
+                );
+                win.render.dirty.border = false;
             }
         }
     }

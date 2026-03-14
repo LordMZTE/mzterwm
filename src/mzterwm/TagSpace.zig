@@ -75,17 +75,34 @@ pub fn evacuateTo(self: *TagSpace, other: ?*TagSpace) !void {
     self.windows_valid = false;
 }
 
-/// Gets or computes the list of window indices in this TagSpace
-pub fn getWindows(self: *TagSpace) ![]usize {
+/// Gets or computes the list of window indices in this TagSpace.  May also update window state for
+/// stuff like border color.
+pub fn getWindows(self: *TagSpace) error{OutOfMemory}![]usize {
     if (self.windows_valid) return self.windows.items;
 
     self.windows.clearRetainingCapacity();
     for (self.wm.windows.items, 0..) |win, i| {
-        if (win.tag_space == self and win.mask & self.mask != 0) {
-            try self.windows.append(self.wm.globals.alloc, i);
-        }
+        if (win.tag_space != self or win.mask & self.mask == 0) continue;
+
+        try self.windows.append(self.wm.globals.alloc, i);
+        win.render.updateBorderColor(if (i == self.selected_window)
+            self.wm.config.borders.focus_color.vec
+        else
+            self.wm.config.borders.base_color.vec);
     }
 
     self.windows_valid = true;
     return self.windows.items;
+}
+
+/// Tells River to actually focus the currently selected window.  Unfocuses any focused window if
+/// there is no selected window.
+pub fn commitFocus(self: *TagSpace) error{OutOfMemory}!void {
+    const wins = try self.getWindows();
+    if (self.selected_window >= wins.len) {
+        self.wm.unfocus();
+        return;
+    }
+
+    self.wm.windows.items[wins[self.selected_window]].focus();
 }

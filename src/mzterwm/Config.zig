@@ -1,3 +1,6 @@
+//! The configuration file.
+//! See default_config.ziggy for documentation.
+
 const std = @import("std");
 const wayland = @import("wayland");
 const xkbcommon = @import("xkbcommon");
@@ -20,6 +23,12 @@ tag_keys: struct {
         .{ .xkb = @enumFromInt(xkbcommon.Keysym.@"8") },
         .{ .xkb = @enumFromInt(xkbcommon.Keysym.@"9") },
     },
+} = .{},
+
+borders: struct {
+    width: u31 = 4,
+    base_color: Color = .{ .vec = .{ 0x80, 0x80, 0x80, 0x80 } },
+    focus_color: Color = .{ .vec = .{ 0xff, 0x00, 0xff, 0xff } },
 } = .{},
 
 const Config = @This();
@@ -80,6 +89,30 @@ pub const Keysym = struct {
         }
 
         return .{ .xkb = xkb_keysym };
+    }
+};
+
+pub const Color = struct {
+    vec: @Vector(4, u8),
+    pub const ziggy_options = struct {
+        pub const parse = ziggyParse;
+    };
+
+    fn ziggyParse(
+        parser: *ziggy.Parser,
+        first_tok: ziggy.Tokenizer.Token,
+    ) ziggy.Parser.Error!Color {
+        const str = try parser.parseBytes([]const u8, first_tok);
+        const n = std.fmt.parseInt(u32, str, 0x10) catch {
+            return parser.addError(.overflow);
+        };
+
+        return .{ .vec = .{
+            @intCast(n >> 24),
+            @intCast(n >> 16 & 0xff),
+            @intCast(n >> 8 & 0xff),
+            @intCast(n & 0xff),
+        } };
     }
 };
 

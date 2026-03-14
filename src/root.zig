@@ -76,6 +76,13 @@ pub const Region = struct {
 
         return .{ first, second };
     }
+
+    pub fn contains(self: Region, point: @Vector(2, i32)) bool {
+        const corner = self.pos + self.size;
+
+        return @reduce(.And, point >= self.pos) and
+            @reduce(.And, point <= corner);
+    }
 };
 
 /// An 8-bit fixed-point ratio.
@@ -90,7 +97,13 @@ pub const Ratio = struct {
         return .{ .val = 255 - self.val };
     }
 
+    /// Scale a scalar value by this ratio.  Do not use when close to the given integer limit, as
+    /// this will multiply by a number potentially as large as 255 first.
     pub fn scale(self: Ratio, x: anytype) @TypeOf(x) {
+        if (@typeInfo(@TypeOf(x)) == .vector) {
+            return @divTrunc(x * @as(@TypeOf(x), @splat(self.val)), @as(@TypeOf(x), @splat(255)));
+        }
+
         return @divTrunc(x * @as(@TypeOf(x), self.val), 255);
     }
 
@@ -106,6 +119,15 @@ pub const Ratio = struct {
         try std.testing.expectEqual(69420, Ratio.one.scale(69420));
     }
 };
+
+/// Converts a normal rgba color to the weird 32 bit color format with pre-multiplied alpha River
+/// wants.
+pub fn colorToRiver(color: @Vector(4, u8)) @Vector(4, u32) {
+    const factor = 0xffff_ffff / 0xff;
+    const alpha_ratio: Ratio = .{ .val = color[3] };
+    const prepremul: @Vector(4, u40) = @as(@Vector(4, u40), color) * @as(@Vector(4, u40), @splat(factor));
+    return @truncate(alpha_ratio.scale(prepremul));
+}
 
 test {
     _ = Ratio;
