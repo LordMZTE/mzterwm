@@ -39,4 +39,5 @@
     { .key = "k", .mods = { .alt = true }, .action = FocusWindow { .direction = "prev" } },
     { .key = "period", .mods = { .alt = true }, .action = FocusOutput { .direction = "next" } },
     { .key = "comma", .mods = { .alt = true }, .action = FocusOutput { .direction = "prev" } },
+    { .key = "return", .mods = { .alt = true }, .action = Spawn { .argv = ["foot"] } },
 ],
