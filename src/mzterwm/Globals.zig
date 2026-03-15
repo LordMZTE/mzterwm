@@ -142,10 +142,13 @@ fn regListener(reg: *wl.Registry, ev: wl.Registry.Event, pog: *PartialOrGlobals)
 
 pub fn deinit(self: *Globals) void {
     self.rwm.destroy();
+    self.xkb_binds.destroy();
 
     var maybe_node = self.outputs.first;
-    while (maybe_node) |node| : (maybe_node = node.next) {
-        Output.fromListNode(node).deinit();
+    while (maybe_node) |node| {
+        const outp = Output.fromListNode(node);
+        maybe_node = outp.node.next;
+        outp.deinit();
     }
 
     const pog: *PartialOrGlobals = @fieldParentPtr("globals", self);

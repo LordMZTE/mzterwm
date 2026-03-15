@@ -470,13 +470,17 @@ pub fn deinit(self: *WindowManager) void {
     self.outputs.deinit(self.globals.alloc);
 
     var win_node = self.windows.first;
-    while (win_node) |node| : (win_node = node.next) {
+    while (win_node) |node| {
         const win: *Window = .fromListNode(node);
+        win_node = win.winlist_node.next;
         win.deinit();
     }
     self.window_pool.deinit();
     self.keys.deinit();
+
+    // FIXME: this is invalid if setup hasn't been called
     self.globals.alloc.free(self.tag_keys);
+    self.globals.alloc.free(self.global_user_keys);
 
     var exp_iter = self.expunged_spaces.iterator();
     while (exp_iter.next()) |ent| {
@@ -484,6 +488,7 @@ pub fn deinit(self: *WindowManager) void {
         ent.value_ptr.deinit();
     }
     self.expunged_spaces.deinit(self.globals.alloc);
+
 }
 
 pub fn selectedOutput(self: *WindowManager) ?*Output {

@@ -7,6 +7,7 @@ pub const action = @import("mzterwm/action.zig");
 
 pub const Config = @import("mzterwm/Config.zig");
 pub const Globals = @import("mzterwm/Globals.zig");
+pub const IPCHandler = @import("mzterwm/IPCHandler.zig");
 pub const KeyManager = @import("mzterwm/KeyManager.zig");
 pub const Layout = @import("mzterwm/layout.zig").Layout;
 pub const TagSpace = @import("mzterwm/TagSpace.zig");
@@ -21,9 +22,72 @@ pub fn roundtrip(dpy: *wl.Display) !void {
 }
 
 /// Run the main loop.  This dispatches wayland events and socket requests.
-pub fn mainLoop(dpy: *wl.Display, wm: *WindowManager) !void {
+pub fn mainLoop(dpy: *wl.Display, wm: *WindowManager, ipc: *IPCHandler) !void {
+    const epfd = try std.posix.epoll_create1(0);
+    defer std.posix.close(epfd);
+
+    const sigset = sigs: {
+        var sigs = std.posix.sigemptyset();
+        std.posix.sigaddset(&sigs, std.os.linux.SIG.INT);
+        std.posix.sigaddset(&sigs, std.os.linux.SIG.TERM);
+        std.posix.sigaddset(&sigs, std.os.linux.SIG.CHLD);
+        // Maybe for future config hot reloading
+        //std.posix.sigaddset(&sigs, std.os.linux.SIG.USR1);
+        break :sigs sigs;
+    };
+    std.posix.sigprocmask(std.posix.SIG.BLOCK, &sigset, null);
+
+    const sigfd = try std.posix.signalfd(-1, &sigset, 0);
+    defer std.posix.close(sigfd);
+
+    const wlfd = dpy.getFd();
+    var add_ev: std.posix.system.epoll_event = .{
+        .events = std.os.linux.EPOLL.IN,
+        .data = .{ .fd = wlfd },
+    };
+    try std.posix.epoll_ctl(
+        epfd,
+        std.os.linux.EPOLL.CTL_ADD,
+        wlfd,
+        &add_ev,
+    );
+
+    add_ev.data.fd = sigfd;
+    try std.posix.epoll_ctl(
+        epfd,
+        std.os.linux.EPOLL.CTL_ADD,
+        sigfd,
+        &add_ev,
+    );
+
+    add_ev.data.fd = ipc.srv.stream.handle;
+    try std.posix.epoll_ctl(
+        epfd,
+        std.os.linux.EPOLL.CTL_ADD,
+        ipc.srv.stream.handle,
+        &add_ev,
+    );
+
+    if (dpy.flush() != .SUCCESS) return error.WaylandIPCFail;
+
+    var evbuf: [64]std.posix.system.epoll_event = undefined;
     while (true) {
-        if (dpy.dispatch() != .SUCCESS) return error.WaylandIPCFail;
+        const evs = evbuf[0..std.posix.epoll_wait(epfd, &evbuf, -1)];
+
+        for (evs) |ev| {
+            if (ev.data.fd == wlfd) {
+                if (dpy.dispatch() != .SUCCESS) return error.WaylandIPCFail;
+                if (dpy.flush() != .SUCCESS) return error.WaylandIPCFail;
+            } else if (ev.data.fd == sigfd) {
+                var siginf: std.os.linux.signalfd_siginfo = undefined;
+                std.debug.assert(try std.posix.read(sigfd, std.mem.asBytes(&siginf)) ==
+                    @sizeOf(std.os.linux.signalfd_siginfo));
+                std.log.info("Got signal {}, exiting", .{siginf.signo});
+                return;
+            } else {
+                try ipc.onFdReadable(epfd, ev.data.fd);
+            }
+        }
 
         switch (wm.run_state) {
             .keep_running => {},

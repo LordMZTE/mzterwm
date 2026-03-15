@@ -103,6 +103,10 @@ pub fn deinit(self: *KeyManager) void {
     }
 
     self.entries.deinit(self.globals.alloc);
+
+    for (self.seats.items) |seat| {
+        seat.deinit();
+    }
     self.seats.deinit(self.globals.alloc);
 }
 

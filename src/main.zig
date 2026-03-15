@@ -1,6 +1,7 @@
+const mzterwm = @import("mzterwm");
+const proto = @import("mzterwm-proto");
 const std = @import("std");
 const wl = @import("wayland").client.wl;
-const mzterwm = @import("mzterwm");
 
 pub fn main() !u8 {
     var gpa = if (@import("builtin").mode == .Debug) std.heap.DebugAllocator(.{}).init else {};
@@ -24,6 +25,17 @@ pub fn main() !u8 {
     var dpy: *wl.Display = try .connect(null);
     defer dpy.disconnect();
 
+    const sockpath = try proto.findSocketPath(alloc);
+    defer {
+        std.fs.cwd().deleteFile(sockpath) catch |e| {
+            std.log.warn("Couldn't delete socket after shutdown: {}", .{e});
+        };
+        alloc.free(sockpath);
+    }
+
+    var ipc: mzterwm.IPCHandler = try .initOn(sockpath);
+    defer ipc.deinit();
+
     const reg = try dpy.getRegistry();
     defer reg.destroy();
 
@@ -34,6 +46,6 @@ pub fn main() !u8 {
     defer wm.deinit();
     try wm.setup();
 
-    try mzterwm.mainLoop(dpy, &wm);
+    try mzterwm.mainLoop(dpy, &wm, &ipc);
     return 0;
 }
