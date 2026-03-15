@@ -10,7 +10,7 @@ const river = wayland.client.river;
 alloc: std.mem.Allocator,
 rwm: *river.WindowManagerV1,
 xkb_binds: *river.XkbBindingsV1,
-outputs: std.ArrayList(Output),
+outputs: std.SinglyLinkedList,
 
 const Globals = @This();
 
@@ -19,7 +19,7 @@ const PartialOrGlobals = union(enum) {
         alloc: std.mem.Allocator,
         rwm: ?*river.WindowManagerV1 = null,
         xkb_binds: ?*river.XkbBindingsV1 = null,
-        outputs: std.ArrayList(Output) = .empty,
+        outputs: std.SinglyLinkedList = .{},
     },
     globals: Globals,
 };
@@ -40,10 +40,10 @@ pub fn setupListenerAndCollect(
     const self: Globals = initial: {
         errdefer {
             if (pog.partial.rwm) |it| it.destroy();
-            for (pog.partial.outputs.items) |it| {
-                it.deinit();
+            var maybe_node = pog.partial.outputs.first;
+            while (maybe_node) |node| : (maybe_node = node.next) {
+                Output.fromListNode(node).deinit();
             }
-            pog.partial.outputs.deinit(alloc);
         }
 
         reg.setListener(*PartialOrGlobals, regListener, pog);
@@ -72,14 +72,21 @@ fn regListener(reg: *wl.Registry, ev: wl.Registry.Event, pog: *PartialOrGlobals)
         .global => |g| switch (pog.*) {
             .partial => |*self| {
                 if (std.mem.orderZ(u8, g.interface, wl.Output.interface.name) == .eq) {
-                    self.outputs.append(self.alloc, .{
+                    const outp = self.alloc.create(Output) catch @panic("OOM");
+                    outp.* = .{
+                        .node = .{},
                         .name = g.name,
                         .wl = reg.bind(
                             g.name,
                             wl.Output,
                             wl.Output.generated_version,
                         ) catch @panic("OOM"),
-                    }) catch @panic("OOM");
+                        .alloc = self.alloc,
+                        .outp_name = null,
+                        .wm_output = null,
+                    };
+                    outp.wl.setListener(*Output, Output.onEvent, outp);
+                    self.outputs.prepend(&outp.node);
                 } else if (std.mem.orderZ(u8, g.interface, river.WindowManagerV1.interface.name) == .eq) {
                     self.rwm = reg.bind(
                         g.name,
@@ -95,23 +102,37 @@ fn regListener(reg: *wl.Registry, ev: wl.Registry.Event, pog: *PartialOrGlobals)
                 }
             },
             .globals => |*self| {
-                if (std.mem.orderZ(u8, g.interface, river.WindowManagerV1.interface.name) == .eq) {
-                    self.rwm = reg.bind(
-                        g.name,
-                        river.WindowManagerV1,
-                        river.WindowManagerV1.generated_version,
-                    ) catch @panic("OOM");
+                if (std.mem.orderZ(u8, g.interface, wl.Output.interface.name) == .eq) {
+                    const outp = self.alloc.create(Output) catch @panic("OOM");
+                    outp.* = .{
+                        .node = .{},
+                        .name = g.name,
+                        .wl = reg.bind(
+                            g.name,
+                            wl.Output,
+                            wl.Output.generated_version,
+                        ) catch @panic("OOM"),
+                        .alloc = self.alloc,
+                        .outp_name = null,
+                        .wm_output = null,
+                    };
+                    outp.wl.setListener(*Output, Output.onEvent, outp);
+                    self.outputs.prepend(&outp.node);
                 }
             },
         },
         .global_remove => |g| {
-            const outputs = switch (pog.*) {
+            var outputs = switch (pog.*) {
                 inline else => |*self| &self.outputs,
             };
 
-            for (outputs.items, 0..) |output, i| {
+            var maybe_node = outputs.first;
+            while (maybe_node) |node| : (maybe_node = node.next) {
+                const output: *Output = .fromListNode(node);
                 if (output.name == g.name) {
-                    outputs.swapRemove(i).deinit();
+                    outputs.remove(node);
+                    output.deinit();
+                    std.log.info("removed output {?s}", .{output.outp_name});
                     break;
                 }
             }
@@ -122,11 +143,10 @@ fn regListener(reg: *wl.Registry, ev: wl.Registry.Event, pog: *PartialOrGlobals)
 pub fn deinit(self: *Globals) void {
     self.rwm.destroy();
 
-    for (self.outputs.items) |it| {
-        it.deinit();
+    var maybe_node = self.outputs.first;
+    while (maybe_node) |node| : (maybe_node = node.next) {
+        Output.fromListNode(node).deinit();
     }
-
-    self.outputs.deinit(self.alloc);
 
     const pog: *PartialOrGlobals = @fieldParentPtr("globals", self);
     self.alloc.destroy(pog);
@@ -134,10 +154,43 @@ pub fn deinit(self: *Globals) void {
 
 /// State associated with an output
 pub const Output = struct {
+    node: std.SinglyLinkedList.Node,
     name: u32,
     wl: *wl.Output,
+    alloc: std.mem.Allocator,
+    outp_name: ?[]const u8,
 
-    pub fn deinit(self: Output) void {
-        self.wl.destroy();
+    /// See comment on WindowManager.Output.wl_output
+    wm_output: ?*mzterwm.WindowManager.Output,
+
+    pub fn deinit(self: *Output) void {
+        self.wl.release();
+        if (self.outp_name) |name| self.alloc.free(name);
+        if (self.wm_output) |wm| wm.wl_output = null;
+        self.alloc.destroy(self);
+    }
+
+    pub fn fromListNode(node: *std.SinglyLinkedList.Node) *Output {
+        return @fieldParentPtr("node", node);
+    }
+
+    fn onEvent(_: *wl.Output, ev: wl.Output.Event, self: *Output) void {
+        switch (ev) {
+            .geometry => {},
+            .mode => {},
+            .done => {},
+            .scale => {},
+            .name => |data| {
+                const new_name = self.alloc.dupe(u8, std.mem.span(data.name)) catch @panic("OOM");
+                if (self.outp_name) |old_name| self.alloc.free(old_name);
+                self.outp_name = new_name;
+                std.log.info("new output name: {s}", .{new_name});
+
+                if (self.wm_output) |wm| {
+                    wm.onNameKnown();
+                }
+            },
+            .description => {},
+        }
     }
 };

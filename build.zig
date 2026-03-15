@@ -58,7 +58,7 @@ pub fn build(b: *std.Build) void {
         }
 
         // Wayland core protocols
-        scanner.generate("wl_output", 2);
+        scanner.generate("wl_output", 4);
 
         // River protocols
         scanner.generate("river_input_manager_v1", 1);

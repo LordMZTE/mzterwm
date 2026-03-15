@@ -41,13 +41,44 @@ pub const Output = struct {
     wm: *WindowManager,
     river: *river.OutputV1,
     region: mzterwm.Region,
-    wl_output_name: u32,
     tag_space: TagSpace,
+
+    /// The corresponding wl_output, if that's known.
+    /// There's a pointer in Globals.Output to this struct, too and those must be kept in sync.
+    wl_output: ?*Globals.Output,
 
     pub fn deinit(self: *Output) void {
         self.river.destroy();
         self.tag_space.deinit();
+        if (self.wl_output) |wl| wl.wm_output = null;
         self.wm.globals.alloc.destroy(self);
+    }
+
+    /// This should be called after the `name` field has been set, which happens either when we get
+    /// a `wl_output` event here for an output we already know the name of, or later when we get the
+    /// name of that output in case we don't have it yet.
+    pub fn onNameKnown(self: *Output) void {
+        std.debug.assert(self.wl_output != null and self.wl_output.?.outp_name != null);
+        const name = self.wl_output.?.outp_name.?;
+
+        // Now, we're able to tell the name of this output.  We can use this information to
+        // find if any windows want to be on this new output.  If there are any, move them
+        // over.
+        var win_maybe_node = self.wm.windows.first;
+        while (win_maybe_node) |node| : (win_maybe_node = node.next) {
+            const win: *Window = .fromListNode(node);
+            if (
+            // window is in limbo, move it to this output
+            win.tag_space == null or
+                // window wants to be on this output
+                (win.wanted_output != null and
+                    std.mem.eql(u8, win.wanted_output.?, name)))
+            {
+                if (win.tag_space) |ts| ts.windows_valid = false;
+                win.tag_space = &self.tag_space;
+                self.tag_space.windows_valid = false;
+            }
+        }
     }
 
     fn listener(_: *river.OutputV1, ev: river.OutputV1.Event, self: *Output) void {
@@ -72,7 +103,19 @@ pub const Output = struct {
                     }
                 }
             },
-            .wl_output => |wlo| self.wl_output_name = wlo.name,
+            .wl_output => |wlo| {
+                var outp_maybe_node = self.wm.globals.outputs.first;
+                while (outp_maybe_node) |node| : (outp_maybe_node = node.next) {
+                    const outp: *Globals.Output = .fromListNode(node);
+                    if (outp.name == wlo.name) {
+                        self.wl_output = outp;
+                        outp.wm_output = self;
+
+                        if (outp.outp_name) |_| self.onNameKnown();
+                        break;
+                    }
+                }
+            },
             .position => |pos| self.region.pos = .{ pos.x, pos.y },
             .dimensions => |dim| {
                 std.debug.assert(dim.width > 0 and dim.height > 0);
@@ -98,6 +141,14 @@ pub const Window = struct {
     tag_space: ?*TagSpace,
     mask: TagSpace.Mask,
     size: [2]u31,
+
+    /// If set, this window has an output it desires to be on which isn't necessarily the one it is
+    /// currently on.
+    /// This is set if the output a window is on is disconnected and it is thus evacuated to another
+    /// tag space or limbo.  If an output of this name reappears, move it to that output.
+    /// If the user manually moves the window to another output, this field is updated to reflect
+    /// that.
+    wanted_output: ?[]const u8,
 
     render: RenderState,
 
@@ -137,6 +188,7 @@ pub const Window = struct {
     pub fn deinit(self: *Window) void {
         self.node.destroy();
         self.river.destroy();
+        if (self.wanted_output) |name| self.wm.globals.alloc.free(name);
         self.wm.window_pool.destroy(self);
     }
 
@@ -429,7 +481,8 @@ fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
             const window = try self.window_pool.create();
             errdefer self.window_pool.destroy(window);
 
-            const tag_space = if (self.selectedOutput()) |out| &out.tag_space else null;
+            const sel_outp = self.selectedOutput();
+            const tag_space = if (sel_outp) |out| &out.tag_space else null;
 
             window.* = .{
                 .winlist_node = .{},
@@ -444,7 +497,18 @@ fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
                     .border_color = self.config.borders.focus_color.vec,
                     .dirty = .{ .border = self.config.borders.width != 0 },
                 },
+                .wanted_output = outp: {
+                    const sel = sel_outp orelse break :outp null;
+                    const wl = sel.wl_output orelse break :outp null;
+                    const name = wl.outp_name orelse break :outp null;
+                    break :outp try self.globals.alloc.dupe(u8, name);
+                },
             };
+
+            std.log.info(
+                "got new window that wants to be on output {s}",
+                .{window.wanted_output orelse "<none>"},
+            );
 
             win.id.setListener(*Window, Window.listener, window);
             self.windows.prepend(&window.winlist_node);
@@ -466,8 +530,8 @@ fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
                 .wm = self,
                 .river = outp.id,
                 .region = .zero,
-                .wl_output_name = 0,
                 .tag_space = .init(self),
+                .wl_output = null,
             };
 
             outp.id.setListener(*Output, Output.listener, output);
