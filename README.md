@@ -16,7 +16,7 @@ also view multiple of them at once.
 - [ ] Layer shell WM
 - [x] Focusing Windows
 - [ ] ~Multi-Seat~
-    - mzterwm currently contains a tested and half-assed attempt at not exploding with multiple
+    - mzterwm currently contains an untested and half-assed attempt at not exploding with multiple
       seats. Stuff like each seat having it's own focused window and such is entirely unimplemented
       and probably won't be implemented unless someone steps up.
 - [ ] Have all these be well-tested
