@@ -37,11 +37,19 @@ tag_keys_down: u16,
 
 global_user_keys: []UserKeyData,
 
+/// A map of output names to tag spaces.  If an output is removed, it's tag space is moved to this
+/// map.  If it is later added again, we recover from here.
+expunged_spaces: std.StringHashMapUnmanaged(TagSpace),
+
 pub const Output = struct {
     wm: *WindowManager,
     river: *river.OutputV1,
     region: mzterwm.Region,
-    tag_space: TagSpace,
+
+    /// This output's tag space.  This is optional because it will be null if this output doesn't
+    /// have a corresponding wl_output known yet, in which case we don't know if we should create a
+    /// new tag space or recover from the expunged ones if this is an output re-plug.
+    tag_space: ?TagSpace,
 
     /// The corresponding wl_output, if that's known.
     /// There's a pointer in Globals.Output to this struct, too and those must be kept in sync.
@@ -49,7 +57,7 @@ pub const Output = struct {
 
     pub fn deinit(self: *Output) void {
         self.river.destroy();
-        self.tag_space.deinit();
+        if (self.tag_space) |*ts| ts.deinit();
         if (self.wl_output) |wl| wl.wm_output = null;
         self.wm.globals.alloc.destroy(self);
     }
@@ -59,7 +67,14 @@ pub const Output = struct {
     /// name of that output in case we don't have it yet.
     pub fn onNameKnown(self: *Output) void {
         std.debug.assert(self.wl_output != null and self.wl_output.?.outp_name != null);
+        std.debug.assert(self.tag_space == null);
         const name = self.wl_output.?.outp_name.?;
+
+        if (self.wm.expunged_spaces.fetchRemove(name)) |kv| {
+            std.log.info("recovered expunged tag space for {s}", .{name});
+            self.tag_space = kv.value;
+            self.wm.globals.alloc.free(kv.key);
+        } else self.tag_space = .init(self.wm);
 
         // Now, we're able to tell the name of this output.  We can use this information to
         // find if any windows want to be on this new output.  If there are any, move them
@@ -75,10 +90,12 @@ pub const Output = struct {
                     std.mem.eql(u8, win.wanted_output.?, name)))
             {
                 if (win.tag_space) |ts| ts.windows_valid = false;
-                win.tag_space = &self.tag_space;
-                self.tag_space.windows_valid = false;
+                win.tag_space = &self.tag_space.?;
+                self.tag_space.?.windows_valid = false;
             }
         }
+
+        self.tag_space.?.commitFocus() catch @panic("OOM");
     }
 
     fn listener(_: *river.OutputV1, ev: river.OutputV1.Event, self: *Output) void {
@@ -93,11 +110,33 @@ pub const Output = struct {
                             self.wm.selected_output -|= 1;
                         }
 
-                        old.tag_space.evacuateTo(
-                            // Move windows to other remaining outputs or limbo if there are no outputs
-                            // left.
-                            if (self.wm.selectedOutput()) |outp| &outp.tag_space else null,
-                        ) catch @panic("OOM");
+                        if (old.tag_space) |*ts| {
+                            ts.evacuateTo(
+                                // Move windows to other remaining outputs or limbo if there are no outputs
+                                // left.
+                                if (self.wm.selectedOutput()) |outp| if (outp.tag_space) |*ts_| ts_ else null else null,
+                            ) catch @panic("OOM");
+                            ts.windows_valid = false;
+
+                            if (old.wl_output != null and old.wl_output.?.outp_name != null) {
+                                const key = self.wm.globals.alloc.dupe(
+                                    u8,
+                                    old.wl_output.?.outp_name.?,
+                                ) catch @panic("OOM");
+
+                                self.wm.expunged_spaces.putNoClobber(
+                                    self.wm.globals.alloc,
+                                    key,
+                                    ts.*,
+                                ) catch @panic("OOM");
+                                old.tag_space = null;
+
+                                std.log.info("expunged space for {s}", .{key});
+                            } else {
+                                std.log.err("output removed before the name was known.  " ++
+                                    "This means we got some very weird events from River.", .{});
+                            }
+                        }
 
                         break;
                     }
@@ -333,6 +372,7 @@ pub fn init(globals: *Globals, config: Config) WindowManager {
         .tag_keys = undefined, // initialized during setup
         .tag_keys_down = 0,
         .global_user_keys = undefined, // initialized during setup
+        .expunged_spaces = .empty,
     };
 }
 
@@ -379,20 +419,21 @@ fn onTagKeyEvent(_: *river.XkbBindingV1, ev: river.XkbBindingV1.Event, keydat: *
         .pressed => {
             keydat.wm.tag_keys_down +|= 1;
             const outp = keydat.wm.selectedOutput() orelse return;
-            outp.tag_space.windows_valid = false;
+            const ts = &(outp.tag_space orelse return);
+            ts.windows_valid = false;
             if (keydat.wm.tag_keys_down == 1) {
                 // This is the first key being pressed this switch operation.  Set primary and focus
                 // only tags we're now subsequently pressing.
-                outp.tag_space.primary = tag;
-                outp.tag_space.mask = @as(TagSpace.Mask, 1) << tag;
+                ts.primary = tag;
+                ts.mask = @as(TagSpace.Mask, 1) << tag;
             } else {
-                outp.tag_space.mask |= @as(TagSpace.Mask, 1) << tag;
+                ts.mask |= @as(TagSpace.Mask, 1) << tag;
             }
 
-            std.log.debug("tags switched; primary: {}, mask: {b}", .{
-                outp.tag_space.primary,
-                outp.tag_space.mask,
-            });
+            std.log.debug(
+                "tags switched; primary: {}, mask: {b}",
+                .{ ts.primary, ts.mask },
+            );
         },
         .released => {
             keydat.wm.tag_keys_down -|= 1;
@@ -436,6 +477,13 @@ pub fn deinit(self: *WindowManager) void {
     self.window_pool.deinit();
     self.keys.deinit();
     self.globals.alloc.free(self.tag_keys);
+
+    var exp_iter = self.expunged_spaces.iterator();
+    while (exp_iter.next()) |ent| {
+        self.globals.alloc.free(ent.key_ptr.*);
+        ent.value_ptr.deinit();
+    }
+    self.expunged_spaces.deinit(self.globals.alloc);
 }
 
 pub fn selectedOutput(self: *WindowManager) ?*Output {
@@ -482,7 +530,7 @@ fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
             errdefer self.window_pool.destroy(window);
 
             const sel_outp = self.selectedOutput();
-            const tag_space = if (sel_outp) |out| &out.tag_space else null;
+            const tag_space = if (sel_outp) |out| if (out.tag_space) |*ts| ts else null else null;
 
             window.* = .{
                 .winlist_node = .{},
@@ -530,13 +578,12 @@ fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
                 .wm = self,
                 .river = outp.id,
                 .region = .zero,
-                .tag_space = .init(self),
+                .tag_space = null,
                 .wl_output = null,
             };
 
             outp.id.setListener(*Output, Output.listener, output);
             try self.outputs.append(self.globals.alloc, output);
-            try output.tag_space.commitFocus();
         },
         .seat => |river_seat| {
             const seat = try self.globals.alloc.create(Seat);
@@ -553,9 +600,11 @@ fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
             // If there's an output selected and its tag space has a focused window, make this seat
             // focus it.
             if (self.selectedOutput()) |outp| {
-                const space_wins = try outp.tag_space.getWindows();
-                if (outp.tag_space.selected_window < space_wins.len) {
-                    river_seat.id.focusWindow(space_wins[outp.tag_space.selected_window].river);
+                if (outp.tag_space) |*ts| {
+                    const space_wins = try ts.getWindows();
+                    if (ts.selected_window < space_wins.len) {
+                        river_seat.id.focusWindow(space_wins[ts.selected_window].river);
+                    }
                 }
             }
         },
@@ -566,8 +615,9 @@ fn performManage(self: *WindowManager) !void {
     defer self.globals.rwm.manageFinish();
 
     for (self.outputs.items) |outp| {
-        const windows = try outp.tag_space.getWindows();
-        try outp.tag_space.tagdata[outp.tag_space.primary].layout.performLayout(
+        const ts = &(outp.tag_space orelse continue);
+        const windows = try ts.getWindows();
+        try ts.tagdata[ts.primary].layout.performLayout(
             self,
             outp.region.inset(self.config.gaps.output),
             windows,
@@ -626,7 +676,8 @@ fn performRender(self: *WindowManager) !void {
 
     // update properties of windows in each tagspace
     for (self.outputs.items) |outp| {
-        for (try outp.tag_space.getWindows()) |win| {
+        const ts = &(outp.tag_space orelse continue);
+        for (try ts.getWindows()) |win| {
             if (win.render.dirty.pos) {
                 win.node.setPosition(win.render.region.pos[0], win.render.region.pos[1]);
                 win.render.dirty.pos = false;

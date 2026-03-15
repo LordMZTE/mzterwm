@@ -13,15 +13,16 @@ pub const Action = union(enum) {
         switch (self) {
             .FocusWindow => |opt| {
                 const output = wm.selectedOutput() orelse return;
-                const wins = try output.tag_space.getWindows();
+                const ts = &(output.tag_space orelse return);
+                const wins = try ts.getWindows();
 
                 switch (opt.direction) {
-                    .next => mzterwm.rotFocusFwd(&output.tag_space.selected_window, wins.len),
-                    .prev => mzterwm.rotFocusBck(&output.tag_space.selected_window, wins.len),
+                    .next => mzterwm.rotFocusFwd(&ts.selected_window, wins.len),
+                    .prev => mzterwm.rotFocusBck(&ts.selected_window, wins.len),
                 }
 
-                output.tag_space.windows_valid = false;
-                try output.tag_space.commitFocus();
+                ts.windows_valid = false;
+                try ts.commitFocus();
             },
             .FocusOutput => |opt| {
                 switch (opt.direction) {
@@ -29,7 +30,8 @@ pub const Action = union(enum) {
                     .prev => mzterwm.rotFocusBck(&wm.selected_output, wm.outputs.items.len),
                 }
 
-                if (wm.selectedOutput()) |out| try out.tag_space.commitFocus();
+                if (wm.selectedOutput()) |out|
+                    if (out.tag_space) |*ts| try ts.commitFocus();
             },
             .Spawn => |opt| {
                 const t = try std.Thread.spawn(.{}, spawnAndWaitChild, .{ wm.globals.alloc, opt.argv });
