@@ -57,6 +57,11 @@ pub fn main() !u8 {
         return 0;
     }
 
+    if (parse_res.positionals.len != 0) {
+        std.log.err("Expected no positional arguments, got {}", .{parse_res.positionals.len});
+        return 1;
+    }
+
     const verb = parse_res.verb orelse {
         // TODO: this is also hit if the user enters an unknown verb.  Probably a bug in zig-args.
         std.log.err("No verb was given.  See --help.", .{});

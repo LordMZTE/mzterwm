@@ -44,6 +44,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "mzterwm-proto", .module = proto_mod },
             .{ .name = "ziggy", .module = ziggy_dep.module("ziggy") },
             .{ .name = "xkbcommon", .module = xkbcommon_mod },
+            .{ .name = "args", .module = args_mod },
         },
     });
 

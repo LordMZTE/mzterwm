@@ -141,9 +141,9 @@ pub const Color = struct {
     }
 };
 
-pub fn load(alloc: std.mem.Allocator, arena: std.mem.Allocator) !Config {
+pub fn load(alloc: std.mem.Allocator, arena: std.mem.Allocator, maybe_path: ?[]const u8) !Config {
     const filepath = path: {
-        if (std.posix.getenv("MZTERWM_CONFIG")) |path| {
+        if (maybe_path) |path| {
             break :path try alloc.dupe(u8, path);
         } else if (std.posix.getenv("XDG_CONFIG_HOME")) |conf_home| {
             break :path try std.fs.path.join(alloc, &.{
