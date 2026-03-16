@@ -11,10 +11,12 @@ const Config = @import("Config.zig");
 const Globals = @import("Globals.zig");
 const KeyManager = @import("KeyManager.zig");
 const TagSpace = @import("TagSpace.zig");
+const IPCHandler = @import("IPCHandler.zig");
 
 const river = wayland.client.river;
 
 globals: *Globals,
+ipc: *IPCHandler,
 config: Config,
 run_state: enum {
     keep_running,
@@ -360,9 +362,10 @@ const UserKeyData = struct {
 
 const WindowManager = @This();
 
-pub fn init(globals: *Globals, config: Config) WindowManager {
+pub fn init(globals: *Globals, ipc: *IPCHandler, config: Config) WindowManager {
     return .{
         .globals = globals,
+        .ipc = ipc,
         .config = config,
         .run_state = .keep_running,
         .outputs = .empty,
@@ -426,8 +429,26 @@ fn onTagKeyEvent(_: *river.XkbBindingV1, ev: river.XkbBindingV1.Event, keydat: *
                 // only tags we're now subsequently pressing.
                 ts.primary = tag;
                 ts.mask = @as(TagSpace.Mask, 1) << tag;
+
+                // TODO: this is suboptimal because we send two events but flush each individually.
+                // Perhaps consider persistent per-client buffers.
+                keydat.wm.ipc.emitEventToAll(.tag_switch_start);
+                if (outp.wl_output) |wl|
+                    if (wl.outp_name) |name|
+                        keydat.wm.ipc.emitEventToAll(.{ .tag_change = .{
+                            .mask = ts.mask,
+                            .primary = tag,
+                            .output = name,
+                        } });
             } else {
                 ts.mask |= @as(TagSpace.Mask, 1) << tag;
+                if (outp.wl_output) |wl|
+                    if (wl.outp_name) |name|
+                        keydat.wm.ipc.emitEventToAll(.{ .tag_change = .{
+                            .mask = ts.mask,
+                            .primary = ts.primary,
+                            .output = name,
+                        } });
             }
 
             std.log.debug(
@@ -437,6 +458,8 @@ fn onTagKeyEvent(_: *river.XkbBindingV1, ev: river.XkbBindingV1.Event, keydat: *
         },
         .released => {
             keydat.wm.tag_keys_down -|= 1;
+            if (keydat.wm.tag_keys_down == 0)
+                keydat.wm.ipc.emitEventToAll(.tag_switch_stop);
         },
         .stop_repeat => {},
     }
@@ -488,7 +511,6 @@ pub fn deinit(self: *WindowManager) void {
         ent.value_ptr.deinit();
     }
     self.expunged_spaces.deinit(self.globals.alloc);
-
 }
 
 pub fn selectedOutput(self: *WindowManager) ?*Output {

@@ -1,7 +1,24 @@
 const std = @import("std");
+const s2s = @import("s2s");
+
+pub const pkt = @import("proto/pkt.zig");
+pub const Client = @import("proto/Client.zig");
 
 /// The current protocol version.  When a client connects, this must match.
-pub const version: u32 = 0;
+pub const ProtocolVersion = u32;
+pub const version: ProtocolVersion = 0;
+
+pub const tag_bitwidth = 32;
+pub const TagMask = std.meta.Int(.unsigned, tag_bitwidth);
+pub const TagIdx = std.math.Log2Int(TagMask);
+
+pub const readPkt = s2s.deserializeAlloc;
+
+pub fn writePkt(stream: *std.Io.Writer, packet: anytype) !void {
+    return s2s.serialize(stream, @TypeOf(packet), packet);
+}
+
+pub const freePkt = s2s.free;
 
 /// Gets the path where the IPC socket of mzterwm is considering the current environment.
 /// Return value is allocated with the given allocator.

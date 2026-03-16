@@ -17,6 +17,16 @@
         .xkbcommon = .{
             .url = "git+https://codeberg.org/ifreund/zig-xkbcommon?ref=main#a10651157cb1545ee3ae3818b4c7437c64d16462",
             .hash = "xkbcommon-0.4.0-dev-VDqIe3bUAQB9reSurmSJxQjiQ6bnpekmOxIp_077GhVZ",
+            .lazy = true,
+        },
+        .args = .{
+            .url = "git+https://github.com/ikskuh/zig-args?ref=master#e060ac80c244e9675471b6d213b22ddc83cc8f98",
+            .hash = "args-0.0.0-CiLiqo_RAADz2TiHUzG5-0Mk7IZHR-h1SZgUrb_k4c7d",
+            .lazy = true,
+        },
+        .s2s = .{
+            .url = "git+https://github.com/ziglibs/s2s?ref=master#eeccd16e60ef9fd7fbb9a3b1b82e88f74f7631f0",
+            .hash = "s2s-0.0.1-qt8ajYV8AAB9m_WoCGu-BRH1ghuvFbK_BuMfhXYJ0mCg",
         },
     },
 

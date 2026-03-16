@@ -12,7 +12,7 @@ also view multiple of them at once.
 - [x] Output management with ability to restore state after output reconnect
 - [x] Config file
 - [ ] Waybar plugin
-- [ ] IPC socket
+- [x] IPC socket
 - [ ] Layer shell WM
 - [x] Focusing Windows
 - [ ] ~Multi-Seat~

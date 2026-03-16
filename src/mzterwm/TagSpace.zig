@@ -2,13 +2,14 @@
 //! tags are selected and data associated with them.
 
 const std = @import("std");
+const proto = @import("mzterwm-proto");
 
 const Layout = @import("layout.zig").Layout;
 const WindowManager = @import("WindowManager.zig");
 
-pub const bitwidth = 32;
-pub const Mask = std.meta.Int(.unsigned, bitwidth);
-pub const TagIdx = std.math.Log2Int(Mask);
+pub const bitwidth = proto.tag_bitwidth;
+pub const Mask = proto.TagMask;
+pub const TagIdx = proto.TagIdx;
 
 /// The parent window manager
 wm: *WindowManager,

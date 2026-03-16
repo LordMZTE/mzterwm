@@ -40,14 +40,16 @@ pub fn mainLoop(dpy: *wl.Display, wm: *WindowManager, ipc: *IPCHandler) !void {
     const sigfd = try std.posix.signalfd(-1, &sigset, 0);
     defer std.posix.close(sigfd);
 
+    const EPOLL = std.os.linux.EPOLL;
+
     const wlfd = dpy.getFd();
     var add_ev: std.posix.system.epoll_event = .{
-        .events = std.os.linux.EPOLL.IN,
+        .events = EPOLL.IN | EPOLL.HUP | EPOLL.ERR,
         .data = .{ .fd = wlfd },
     };
     try std.posix.epoll_ctl(
         epfd,
-        std.os.linux.EPOLL.CTL_ADD,
+        EPOLL.CTL_ADD,
         wlfd,
         &add_ev,
     );
@@ -55,7 +57,7 @@ pub fn mainLoop(dpy: *wl.Display, wm: *WindowManager, ipc: *IPCHandler) !void {
     add_ev.data.fd = sigfd;
     try std.posix.epoll_ctl(
         epfd,
-        std.os.linux.EPOLL.CTL_ADD,
+        EPOLL.CTL_ADD,
         sigfd,
         &add_ev,
     );
@@ -63,7 +65,7 @@ pub fn mainLoop(dpy: *wl.Display, wm: *WindowManager, ipc: *IPCHandler) !void {
     add_ev.data.fd = ipc.srv.stream.handle;
     try std.posix.epoll_ctl(
         epfd,
-        std.os.linux.EPOLL.CTL_ADD,
+        EPOLL.CTL_ADD,
         ipc.srv.stream.handle,
         &add_ev,
     );
@@ -76,6 +78,10 @@ pub fn mainLoop(dpy: *wl.Display, wm: *WindowManager, ipc: *IPCHandler) !void {
 
         for (evs) |ev| {
             if (ev.data.fd == wlfd) {
+                if (ev.events & (EPOLL.ERR | EPOLL.HUP) != 0) {
+                    std.log.err("Wayland compositor closed socket", .{});
+                    return error.WaylandIPCFail;
+                }
                 if (dpy.dispatch() != .SUCCESS) return error.WaylandIPCFail;
                 if (dpy.flush() != .SUCCESS) return error.WaylandIPCFail;
             } else if (ev.data.fd == sigfd) {
@@ -84,8 +90,11 @@ pub fn mainLoop(dpy: *wl.Display, wm: *WindowManager, ipc: *IPCHandler) !void {
                     @sizeOf(std.os.linux.signalfd_siginfo));
                 std.log.info("Got signal {}, exiting", .{siginf.signo});
                 return;
-            } else {
-                try ipc.onFdReadable(epfd, ev.data.fd);
+            } else if (!(ipc.onFdReadable(wm.globals.alloc, epfd, ev.data.fd, ev.events) catch |e| {
+                std.log.err("In IPC handler: {}", .{e});
+                return e;
+            })) {
+                std.log.err("Got epoll event on unknown fd {}.  This is a bug.", .{ev.data.fd});
             }
         }
 

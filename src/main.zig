@@ -34,7 +34,7 @@ pub fn main() !u8 {
     }
 
     var ipc: mzterwm.IPCHandler = try .initOn(sockpath);
-    defer ipc.deinit();
+    defer ipc.deinit(alloc);
 
     const reg = try dpy.getRegistry();
     defer reg.destroy();
@@ -42,7 +42,7 @@ pub fn main() !u8 {
     var globals: *mzterwm.Globals = try .setupListenerAndCollect(alloc, reg, dpy);
     defer globals.deinit();
 
-    var wm: mzterwm.WindowManager = .init(globals, config);
+    var wm: mzterwm.WindowManager = .init(globals, &ipc, config);
     defer wm.deinit();
     try wm.setup();
 
