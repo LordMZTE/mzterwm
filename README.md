@@ -13,7 +13,7 @@ also view multiple of them at once.
 - [x] Config file
 - [ ] Waybar plugin
 - [x] IPC socket
-- [ ] Layer shell WM
+- [x] Layer shell WM
 - [x] Focusing Windows
 - [ ] ~Multi-Seat~
     - mzterwm currently contains an untested and half-assed attempt at not exploding with multiple

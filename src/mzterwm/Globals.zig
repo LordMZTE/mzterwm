@@ -10,6 +10,7 @@ const river = wayland.client.river;
 alloc: std.mem.Allocator,
 rwm: *river.WindowManagerV1,
 xkb_binds: *river.XkbBindingsV1,
+layer_shell: *river.LayerShellV1,
 outputs: std.SinglyLinkedList,
 
 const Globals = @This();
@@ -19,6 +20,7 @@ const PartialOrGlobals = union(enum) {
         alloc: std.mem.Allocator,
         rwm: ?*river.WindowManagerV1 = null,
         xkb_binds: ?*river.XkbBindingsV1 = null,
+        layer_shell: ?*river.LayerShellV1 = null,
         outputs: std.SinglyLinkedList = .{},
     },
     globals: Globals,
@@ -54,6 +56,8 @@ pub fn setupListenerAndCollect(
                 return complainAboutMissingGlobal(river.WindowManagerV1),
             .xkb_binds = pog.partial.xkb_binds orelse
                 return complainAboutMissingGlobal(river.XkbBindingsV1),
+            .layer_shell = pog.partial.layer_shell orelse
+                return complainAboutMissingGlobal(river.LayerShellV1),
             .outputs = pog.partial.outputs,
         };
     };
@@ -99,6 +103,12 @@ fn regListener(reg: *wl.Registry, ev: wl.Registry.Event, pog: *PartialOrGlobals)
                         river.XkbBindingsV1,
                         river.XkbBindingsV1.generated_version,
                     ) catch @panic("OOM");
+                } else if (std.mem.orderZ(u8, g.interface, river.LayerShellV1.interface.name) == .eq) {
+                    self.layer_shell = reg.bind(
+                        g.name,
+                        river.LayerShellV1,
+                        river.LayerShellV1.generated_version,
+                    ) catch @panic("OOM");
                 }
             },
             .globals => |*self| {
@@ -143,6 +153,7 @@ fn regListener(reg: *wl.Registry, ev: wl.Registry.Event, pog: *PartialOrGlobals)
 pub fn deinit(self: *Globals) void {
     self.rwm.destroy();
     self.xkb_binds.destroy();
+    self.layer_shell.destroy();
 
     var maybe_node = self.outputs.first;
     while (maybe_node) |node| {

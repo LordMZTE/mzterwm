@@ -43,10 +43,23 @@ global_user_keys: []UserKeyData,
 /// map.  If it is later added again, we recover from here.
 expunged_spaces: std.StringHashMapUnmanaged(TagSpace),
 
+focus_override: enum {
+    /// No layer surface has grabbed focus
+    none,
+
+    /// A layer surface has non-exclusive focus, we can regain it.
+    exclusive,
+
+    /// A layer surface has exclusive focus, we cannot change focus.
+    non_exclusive,
+},
+
 pub const Output = struct {
     wm: *WindowManager,
     river: *river.OutputV1,
+    layer: *river.LayerShellOutputV1,
     region: mzterwm.Region,
+    non_exclusive_region: ?mzterwm.Region,
 
     /// This output's tag space.  This is optional because it will be null if this output doesn't
     /// have a corresponding wl_output known yet, in which case we don't know if we should create a
@@ -59,6 +72,7 @@ pub const Output = struct {
 
     pub fn deinit(self: *Output) void {
         self.river.destroy();
+        self.layer.destroy();
         if (self.tag_space) |*ts| ts.deinit();
         if (self.wl_output) |wl| wl.wm_output = null;
         self.wm.globals.alloc.destroy(self);
@@ -98,6 +112,12 @@ pub const Output = struct {
         }
 
         self.tag_space.?.commitFocus() catch @panic("OOM");
+    }
+
+    /// Returns the region of this output we can use to place windows.
+    /// This takes into account any layer surfaces.
+    pub fn layoutArea(self: *const Output) mzterwm.Region {
+        return self.non_exclusive_region orelse self.region;
     }
 
     fn listener(_: *river.OutputV1, ev: river.OutputV1.Event, self: *Output) void {
@@ -165,6 +185,21 @@ pub const Output = struct {
                     // that these are always positive.
                     @intCast(dim.width),
                     @intCast(dim.height),
+                };
+            },
+        }
+    }
+
+    fn layerListener(
+        _: *river.LayerShellOutputV1,
+        ev: river.LayerShellOutputV1.Event,
+        self: *Output,
+    ) void {
+        switch (ev) {
+            .non_exclusive_area => |area| {
+                self.non_exclusive_region = .{
+                    .pos = .{ area.x, area.y },
+                    .size = .{ @intCast(area.width), @intCast(area.height) },
                 };
             },
         }
@@ -299,9 +334,11 @@ pub const Window = struct {
 pub const Seat = struct {
     wm: *WindowManager,
     river: *river.SeatV1,
+    layer: *river.LayerShellSeatV1,
 
     pub fn deinit(self: *Seat) void {
         self.river.destroy();
+        self.layer.destroy();
         self.wm.globals.alloc.destroy(self);
     }
 
@@ -349,6 +386,19 @@ pub const Seat = struct {
             .pointer_position => {},
         }
     }
+
+    fn layerListener(
+        _: *river.LayerShellSeatV1,
+        ev: river.LayerShellSeatV1.Event,
+        self: *Seat,
+    ) void {
+        self.wm.focus_override = switch (ev) {
+            .focus_exclusive => .exclusive,
+            .focus_non_exclusive => .non_exclusive,
+            .focus_none => .none,
+        };
+        self.wm.onFocusOverrideChanged();
+    }
 };
 
 const TagKeyData = struct {
@@ -376,6 +426,7 @@ pub fn init(globals: *Globals, ipc: *IPCHandler, config: Config) WindowManager {
         .tag_keys_down = 0,
         .global_user_keys = undefined, // initialized during setup
         .expunged_spaces = .empty,
+        .focus_override = .none,
     };
 }
 
@@ -610,12 +661,15 @@ fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
             output.* = .{
                 .wm = self,
                 .river = outp.id,
+                .layer = try self.globals.layer_shell.getOutput(outp.id),
                 .region = .zero,
+                .non_exclusive_region = null,
                 .tag_space = null,
                 .wl_output = null,
             };
 
             outp.id.setListener(*Output, Output.listener, output);
+            output.layer.setListener(*Output, Output.layerListener, output);
             try self.outputs.append(self.globals.alloc, output);
         },
         .seat => |river_seat| {
@@ -625,9 +679,11 @@ fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
             seat.* = .{
                 .wm = self,
                 .river = river_seat.id,
+                .layer = try self.globals.layer_shell.getSeat(river_seat.id),
             };
 
             river_seat.id.setListener(*Seat, Seat.listener, seat);
+            seat.layer.setListener(*Seat, Seat.layerListener, seat);
             try self.keys.seatAdded(seat);
 
             // If there's an output selected and its tag space has a focused window, make this seat
@@ -652,7 +708,7 @@ fn performManage(self: *WindowManager) !void {
         const windows = try ts.getWindows();
         try ts.tagdata[ts.primary].layout.performLayout(
             self,
-            outp.region.inset(self.config.gaps.output),
+            outp.layoutArea().inset(self.config.gaps.output),
             windows,
         );
 
@@ -735,5 +791,14 @@ fn performRender(self: *WindowManager) !void {
                 win.render.dirty.border = false;
             }
         }
+    }
+}
+
+/// Called when the focus_override is updated
+pub fn onFocusOverrideChanged(self: *WindowManager) void {
+    // Invalidate the windows of all tag spaces so the decorations are updated accordingly
+    for (self.outputs.items) |outp| {
+        const ts = &(outp.tag_space orelse continue);
+        ts.windows_valid = false;
     }
 }

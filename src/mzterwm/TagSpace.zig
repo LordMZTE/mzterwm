@@ -3,6 +3,7 @@
 
 const std = @import("std");
 const proto = @import("mzterwm-proto");
+const mzterwm = @import("../root.zig");
 
 const Layout = @import("layout.zig").Layout;
 const WindowManager = @import("WindowManager.zig");
@@ -91,7 +92,8 @@ pub fn getWindows(self: *TagSpace) error{OutOfMemory}![]*WindowManager.Window {
         if (win.tag_space != self or win.mask & self.mask == 0) continue;
 
         try self.windows.append(self.wm.globals.alloc, win);
-        win.render.updateBorderColor(if (i == self.selected_window)
+        win.render.updateBorderColor(if (self.wm.focus_override == .none and
+            i == self.selected_window)
             self.wm.config.borders.focus_color.vec
         else
             self.wm.config.borders.base_color.vec);
@@ -105,6 +107,8 @@ pub fn getWindows(self: *TagSpace) error{OutOfMemory}![]*WindowManager.Window {
 /// Tells River to actually focus the currently selected window.  Unfocuses any focused window if
 /// there is no selected window.
 pub fn commitFocus(self: *TagSpace) error{OutOfMemory}!void {
+    if (self.wm.focus_override != .none) return;
+
     const wins = try self.getWindows();
     if (self.selected_window >= wins.len) {
         self.wm.unfocus();
@@ -112,4 +116,24 @@ pub fn commitFocus(self: *TagSpace) error{OutOfMemory}!void {
     }
 
     wins[self.selected_window].focus();
+}
+
+pub fn maybeUpdateFocus(self: *TagSpace, comptime rotFn: fn(*usize, usize) void) !void {
+    switch (self.wm.focus_override) {
+        .none => {
+            const wins = try self.getWindows();
+            rotFn(&self.selected_window, wins.len);
+            self.windows_valid = false;
+            try self.commitFocus();
+        },
+        .non_exclusive => {
+            const wins = try self.getWindows();
+            rotFn(&self.selected_window, wins.len);
+            self.wm.focus_override = .none;
+            self.wm.onFocusOverrideChanged();
+            // no need to invalidate windows, onFocusOverrideChanged will already have done that
+            try self.commitFocus();
+        },
+        .exclusive => {},
+    }
 }

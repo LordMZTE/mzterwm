@@ -14,11 +14,10 @@ pub const Action = union(enum) {
             .FocusWindow => |opt| {
                 const output = wm.selectedOutput() orelse return;
                 const ts = &(output.tag_space orelse return);
-                const wins = try ts.getWindows();
 
                 switch (opt.direction) {
-                    .next => mzterwm.rotFocusFwd(&ts.selected_window, wins.len),
-                    .prev => mzterwm.rotFocusBck(&ts.selected_window, wins.len),
+                    .next => try ts.maybeUpdateFocus(mzterwm.rotFocusFwd),
+                    .prev => try ts.maybeUpdateFocus(mzterwm.rotFocusBck),
                 }
 
                 ts.windows_valid = false;
