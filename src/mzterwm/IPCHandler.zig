@@ -219,6 +219,15 @@ fn handleRequest(
                 return;
             }
 
+            if ((@as(proto.TagMask, 1) << req.primary) & req.mask == 0) {
+                try proto.writePkt(writer, proto.pkt.Event{ .action_result = .{
+                    .serial = req.serial,
+                    .success = false,
+                    .msg = "Attempt to set primary to a tag that isn't active",
+                } });
+                return;
+            }
+
             const output = for (self.wm.outputs.items) |outp| {
                 const name = (outp.wl_output orelse continue).outp_name orelse continue;
                 if (std.mem.eql(u8, req.output, name)) break outp;
