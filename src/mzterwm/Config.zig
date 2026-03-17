@@ -6,6 +6,7 @@ const wayland = @import("wayland");
 const xkbcommon = @import("xkbcommon");
 const ziggy = @import("ziggy");
 
+const layout = @import("layout.zig");
 const action = @import("action.zig");
 
 const TagSpace = @import("TagSpace.zig");
@@ -42,7 +43,11 @@ keybinds: []const struct {
     key: Keysym,
     mods: Modifiers,
     action: action.Action,
-},
+} = &.{},
+
+layouts: struct {
+    focus: layout.Focus.Config = .{},
+} = .{},
 
 const Config = @This();
 

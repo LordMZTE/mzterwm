@@ -6,6 +6,7 @@ const xkbcommon = @import("xkbcommon");
 const mzterwm = @import("../root.zig");
 
 const action = @import("action.zig");
+const layout = @import("layout.zig");
 
 const Config = @import("Config.zig");
 const Globals = @import("Globals.zig");
@@ -53,6 +54,11 @@ focus_override: enum {
     /// A layer surface has exclusive focus, we cannot change focus.
     non_exclusive,
 },
+
+layout_global: struct {
+    focus: layout.Focus.Global,
+},
+prev_active_layout: layout.LayoutKind,
 
 pub const Output = struct {
     wm: *WindowManager,
@@ -427,6 +433,8 @@ pub fn init(globals: *Globals, ipc: *IPCHandler, config: Config) WindowManager {
         .global_user_keys = undefined, // initialized during setup
         .expunged_spaces = .empty,
         .focus_override = .none,
+        .layout_global = undefined, // initialized during setup
+        .prev_active_layout = .focus,
     };
 }
 
@@ -465,6 +473,14 @@ pub fn setup(self: *WindowManager) !void {
         }, onGlobalUserKeyEvent, ukey);
         bind.enable();
     }
+
+    self.layout_global = .{
+        .focus = try .init(self),
+    };
+
+    // We always start on focus at the moment.
+    // TODO: make this configurable
+    self.layout_global.focus.enter();
 }
 
 fn onTagKeyEvent(_: *river.XkbBindingV1, ev: river.XkbBindingV1.Event, keydat: *TagKeyData) void {
@@ -520,6 +536,9 @@ pub fn shutdown(self: *WindowManager) void {
 }
 
 pub fn deinit(self: *WindowManager) void {
+    // FIXME: this is invalid if setup hasn't been called
+    self.layout_global.focus.deinit(self);
+
     for (self.outputs.items) |outp| {
         outp.deinit();
     }
@@ -560,7 +579,8 @@ pub fn unfocus(self: *WindowManager) void {
     }
 }
 
-/// Will invalide windows on the given output and notify IPC clients of a tag change event.
+/// Will invalide windows on the given output and notify IPC clients and layouts of a tag change
+/// event.
 pub fn notifyTagsChangedOn(self: *WindowManager, outp: *Output) !void {
     const ts = &(outp.tag_space orelse return);
     ts.windows_valid = false;
@@ -800,5 +820,23 @@ pub fn onFocusOverrideChanged(self: *WindowManager) void {
     for (self.outputs.items) |outp| {
         const ts = &(outp.tag_space orelse continue);
         ts.windows_valid = false;
+    }
+}
+
+/// Checks if the currently focused layout is changed and, if so, updates the layout state
+/// accordingly.
+pub fn updateActiveLayout(self: *WindowManager) void {
+    const cur_outp = self.selectedOutput() orelse return;
+    const ts = &(cur_outp.tag_space orelse return);
+    const new_layout: layout.LayoutKind = ts.tagdata[ts.primary].layout;
+
+    if (new_layout != self.prev_active_layout) {
+        switch (self.prev_active_layout) {
+            inline else => |k| @field(self.wm.layout_global, @tagName(k)).leave(),
+        }
+        switch (new_layout) {
+            inline else => |k| @field(self.wm.layout_global, @tagName(k)).enter(),
+        }
+            self.prev_active_layout = new_layout;
     }
 }

@@ -39,5 +39,20 @@
     { .key = "k", .mods = { .alt = true }, .action = FocusWindow { .direction = "prev" } },
     { .key = "period", .mods = { .alt = true }, .action = FocusOutput { .direction = "next" } },
     { .key = "comma", .mods = { .alt = true }, .action = FocusOutput { .direction = "prev" } },
-    { .key = "return", .mods = { .alt = true }, .action = Spawn { .argv = ["foot"] } },
+    { .key = "Return", .mods = { .alt = true }, .action = Spawn { .argv = ["foot"] } },
 ],
+
+// Per-layout configuration
+.layouts = {
+    .focus = {
+        // This is empty by default.
+        .keybinds = [
+            { .key = "l", .mods = { .alt = true }, .action = ResizePrimaryDirectional { .by = 16 } },
+            { .key = "h", .mods = { .alt = true }, .action = ResizePrimaryDirectional { .by = -16 } },
+            { .key = "Up", .mods = { .alt = true }, .action = SetDirection { .to = "up" } },
+            { .key = "Down", .mods = { .alt = true }, .action = SetDirection { .to = "down" } },
+            { .key = "Left", .mods = { .alt = true }, .action = SetDirection { .to = "left" } },
+            { .key = "Right", .mods = { .alt = true }, .action = SetDirection { .to = "right" } },
+        ],
+    },
+}

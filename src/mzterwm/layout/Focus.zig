@@ -2,7 +2,10 @@
 //! There is one column with the "primary" window, all other windows being moved to the other column
 //! where they are stacked orthogonally.
 
+const std = @import("std");
 const mzterwm = @import("../../root.zig");
+
+const river = @import("wayland").client.river;
 
 const Focus = @This();
 
@@ -13,6 +16,98 @@ pub const init: Focus = .{
     .primary_ratio = .half,
     .direction = .left,
 };
+
+pub const Global = struct {
+    keybinds: []KeyData,
+
+    pub fn init(wm: *mzterwm.WindowManager) !Global {
+        const keybinds = try wm.globals.alloc.alloc(KeyData, wm.config.layouts.focus.keybinds.len);
+        errdefer wm.globals.alloc.free(keybinds);
+
+        for (keybinds, wm.config.layouts.focus.keybinds) |*keydat, conf| {
+            keydat.* = .{
+                .wm = wm,
+                .bind = try wm.keys.register(KeyData, .{
+                    .keysym = conf.key.xkb,
+                    .mods = conf.mods.toRiver(),
+                }, onUserKey, keydat),
+                .action = conf.action,
+            };
+        }
+
+        return .{ .keybinds = keybinds };
+    }
+
+    pub fn deinit(self: *Global, wm: *mzterwm.WindowManager) void {
+        wm.globals.alloc.free(self.keybinds);
+    }
+
+    pub fn enter(self: *Global) void {
+        for (self.keybinds) |bind| {
+            bind.bind.enable();
+        }
+    }
+
+    pub fn leave(self: *Global) void {
+        for (self.keybinds) |bind| {
+            bind.bind.disable();
+        }
+    }
+};
+
+pub const KeyData = struct {
+    wm: *mzterwm.WindowManager,
+    bind: *mzterwm.KeyManager.KeyBind,
+    action: Action,
+};
+
+// These are PascalCase so the Ziggy config looks nice
+pub const Action = union(enum) {
+    ResizePrimary: struct { by: i9 },
+
+    /// Like ResizePrimary, but inverted iff the primary direction is down or right
+    ResizePrimaryDirectional: struct { by: i9 },
+
+    SetDirection: struct { to: mzterwm.Cardinal },
+};
+
+pub const Config = struct {
+    keybinds: []const struct {
+        key: mzterwm.Config.Keysym,
+        mods: mzterwm.Config.Modifiers,
+        action: Action,
+    } = &.{},
+};
+
+fn onUserKey(_: *river.XkbBindingV1, ev: river.XkbBindingV1.Event, keydat: *KeyData) void {
+    if (ev != .pressed) return;
+
+    const cur_outp = keydat.wm.selectedOutput() orelse return;
+    const ts = &(cur_outp.tag_space orelse return);
+    std.debug.assert(ts.tagdata[ts.primary].layout == .focus);
+    const self = &ts.tagdata[ts.primary].layout.focus;
+
+    switch (keydat.action) {
+        .ResizePrimary => |opt| {
+            var new_size = self.primary_ratio.val + opt.by;
+            new_size = std.math.clamp(new_size, 16, 255 - 16);
+            self.primary_ratio.val = @intCast(new_size);
+        },
+        .ResizePrimaryDirectional => |opt| {
+            var by = opt.by;
+            switch (self.direction) {
+                .down, .right => by *= -1,
+                .up, .left => {},
+            }
+            var new_size = self.primary_ratio.val + by;
+            new_size = std.math.clamp(new_size, 16, 255 - 16);
+            self.primary_ratio.val = @intCast(new_size);
+        },
+        .SetDirection => |opt| {
+            self.direction = opt.to;
+        }
+    }
+}
 
 pub fn performLayout(
     self: *Focus,

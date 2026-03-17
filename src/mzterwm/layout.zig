@@ -1,7 +1,9 @@
 const mzterwm = @import("../root.zig");
 
+pub const Focus = @import("layout/Focus.zig");
+
 pub const Layout = union(enum) {
-    focus: @import("layout/Focus.zig"),
+    focus: Focus,
 
     pub fn performLayout(
         self: *Layout,
@@ -14,3 +16,5 @@ pub const Layout = union(enum) {
         };
     }
 };
+
+pub const LayoutKind = @typeInfo(Layout).@"union".tag_type.?;

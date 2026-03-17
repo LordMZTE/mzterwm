@@ -116,9 +116,10 @@ pub fn commitFocus(self: *TagSpace) error{OutOfMemory}!void {
     }
 
     wins[self.selected_window].focus();
+    self.wm.updateActiveLayout();
 }
 
-pub fn maybeUpdateFocus(self: *TagSpace, comptime rotFn: fn(*usize, usize) void) !void {
+pub fn maybeUpdateFocus(self: *TagSpace, comptime rotFn: fn (*usize, usize) void) !void {
     switch (self.wm.focus_override) {
         .none => {
             const wins = try self.getWindows();
