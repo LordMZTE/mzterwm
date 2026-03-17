@@ -109,14 +109,37 @@ pub fn mainLoop(dpy: *wl.Display, wm: *WindowManager, ipc: *IPCHandler) !void {
     }
 }
 
-pub const Cardinal = enum {
+pub const Axis = enum {
     row,
     col,
 
-    pub fn orthogonal(self: Cardinal) Cardinal {
+    pub fn orthogonal(self: Axis) Axis {
         return switch (self) {
             .row => .col,
             .col => .row,
+        };
+    }
+};
+
+pub const Cardinal = enum {
+    up,
+    down,
+    left,
+    right,
+
+    pub fn axis(self: Cardinal) Axis {
+        return switch (self) {
+            .up, .down => .col,
+            .left, .right => .row,
+        };
+    }
+
+    pub fn opposite(self: Cardinal) Cardinal {
+        return switch (self) {
+            .up => .down,
+            .down => .up,
+            .left => .right,
+            .right => .left,
         };
     }
 };
@@ -129,8 +152,8 @@ pub const Region = struct {
 
     /// Slice the region in half such that the first half will have a size according to `ratio` and
     /// both halves will be stacked along `direction`.
-    pub fn slice(self: Region, ratio: Ratio, direction: Cardinal) [2]Region {
-        const first: Region = switch (direction) {
+    pub fn sliceAxis(self: Region, ratio: Ratio, axis: Axis) [2]Region {
+        const first: Region = switch (axis) {
             .row => .{
                 .pos = self.pos,
                 .size = .{ ratio.scale(self.size[0]), self.size[1] },
@@ -141,7 +164,7 @@ pub const Region = struct {
             },
         };
 
-        const second: Region = switch (direction) {
+        const second: Region = switch (axis) {
             .row => .{
                 .pos = .{ self.pos[0] + first.size[0], self.pos[1] },
                 .size = .{ self.size[0] - first.size[0], self.size[1] },
@@ -153,6 +176,20 @@ pub const Region = struct {
         };
 
         return .{ first, second };
+    }
+
+    pub fn sliceCardinal(self: Region, ratio: Ratio, cardinal: Cardinal) [2]Region {
+        var axis = self.sliceAxis(ratio, cardinal.axis());
+
+        const cusp = switch (cardinal) {
+            .down, .right => return axis,
+            .left => axis[0].pos + @as(@Vector(2, u31), .{ axis[1].size[0], 0 }),
+            .up => axis[0].pos + @as(@Vector(2, u31), .{ 0, axis[1].size[1] }),
+        };
+
+        axis[1].pos = axis[0].pos;
+        axis[0].pos = cusp;
+        return axis;
     }
 
     pub fn contains(self: Region, point: @Vector(2, i32)) bool {
