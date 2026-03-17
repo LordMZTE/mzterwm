@@ -423,7 +423,6 @@ fn onTagKeyEvent(_: *river.XkbBindingV1, ev: river.XkbBindingV1.Event, keydat: *
             keydat.wm.tag_keys_down +|= 1;
             const outp = keydat.wm.selectedOutput() orelse return;
             const ts = &(outp.tag_space orelse return);
-            ts.windows_valid = false;
             if (keydat.wm.tag_keys_down == 1) {
                 // This is the first key being pressed this switch operation.  Set primary and focus
                 // only tags we're now subsequently pressing.
@@ -433,28 +432,11 @@ fn onTagKeyEvent(_: *river.XkbBindingV1, ev: river.XkbBindingV1.Event, keydat: *
                 // TODO: this is suboptimal because we send two events but flush each individually.
                 // Perhaps consider persistent per-client buffers.
                 keydat.wm.ipc.emitEventToAll(.tag_switch_start);
-                if (outp.wl_output) |wl|
-                    if (wl.outp_name) |name|
-                        keydat.wm.ipc.emitEventToAll(.{ .tag_change = .{
-                            .mask = ts.mask,
-                            .primary = tag,
-                            .output = name,
-                        } });
+                try keydat.wm.notifyTagsChangedOn(outp);
             } else {
                 ts.mask |= @as(TagSpace.Mask, 1) << tag;
-                if (outp.wl_output) |wl|
-                    if (wl.outp_name) |name|
-                        keydat.wm.ipc.emitEventToAll(.{ .tag_change = .{
-                            .mask = ts.mask,
-                            .primary = ts.primary,
-                            .output = name,
-                        } });
+                try keydat.wm.notifyTagsChangedOn(outp);
             }
-
-            std.log.debug(
-                "tags switched; primary: {}, mask: {b}",
-                .{ ts.primary, ts.mask },
-            );
         },
         .released => {
             keydat.wm.tag_keys_down -|= 1;
@@ -525,6 +507,30 @@ pub fn unfocus(self: *WindowManager) void {
     for (self.keys.seats.items) |seat| {
         seat.river.clearFocus();
     }
+}
+
+/// Will invalide windows on the given output and notify IPC clients of a tag change event.
+pub fn notifyTagsChangedOn(self: *WindowManager, outp: *Output) !void {
+    const ts = &(outp.tag_space orelse return);
+    ts.windows_valid = false;
+    if (outp.wl_output) |wl|
+        if (wl.outp_name) |name|
+            self.ipc.emitEventToAll(.{ .tag_change = .{
+                .mask = ts.mask,
+                .primary = ts.primary,
+                .output = name,
+            } });
+
+    std.log.debug(
+        "tags switched; primary: {}, mask: {b}",
+        .{ ts.primary, ts.mask },
+    );
+}
+
+/// Request that River perform a manage sequence.  This is needed for, example, when a tag change
+/// was caused by an IPC request.
+pub fn requestManage(self: *WindowManager) void {
+    self.globals.rwm.manageDirty();
 }
 
 fn rwmListener(

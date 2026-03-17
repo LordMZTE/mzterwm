@@ -90,10 +90,14 @@ pub fn mainLoop(dpy: *wl.Display, wm: *WindowManager, ipc: *IPCHandler) !void {
                     @sizeOf(std.os.linux.signalfd_siginfo));
                 std.log.info("Got signal {}, exiting", .{siginf.signo});
                 return;
-            } else if (!(ipc.onFdReadable(wm.globals.alloc, epfd, ev.data.fd, ev.events) catch |e| {
+            } else if (ipc.onFdReadable(wm.globals.alloc, epfd, ev.data.fd, ev.events) catch |e| {
                 std.log.err("In IPC handler: {}", .{e});
                 return e;
-            })) {
+            }) {
+                // There's a good chance we got an IPC call that caused some wayland events, so
+                // flush any queues.
+                if (dpy.flush() != .SUCCESS) return error.WaylandIPCFail;
+            } else {
                 std.log.err("Got epoll event on unknown fd {}.  This is a bug.", .{ev.data.fd});
             }
         }

@@ -94,6 +94,8 @@ pub fn main() !u8 {
     defer wm.deinit();
     try wm.setup();
 
+    ipc.wm = &wm;
+
     try mzterwm.mainLoop(dpy, &wm, &ipc);
     return 0;
 }

@@ -6,12 +6,15 @@
 const std = @import("std");
 const proto = @import("mzterwm-proto");
 
+const WindowManager = @import("WindowManager.zig");
+
 const IPCHandler = @This();
 
 const log = std.log.scoped(.ipc);
 
 srv: std.net.Server,
 clients: std.ArrayList(Connection),
+wm: *WindowManager,
 
 pub const Connection = struct {
     con: std.net.Server.Connection,
@@ -23,11 +26,14 @@ pub const Connection = struct {
     }
 };
 
+/// Initialize the handler on the given socket address.
+/// Before starting the event loop, the caller must set the `wm` field.
 pub fn initOn(sockpath: []const u8) !IPCHandler {
     const addr = try std.net.Address.initUnix(sockpath);
     return .{
         .srv = try addr.listen(.{}),
         .clients = .empty,
+        .wm = undefined,
     };
 }
 
@@ -81,21 +87,16 @@ pub fn onFdReadable(
             return error.EndOfStream;
         }
 
-        const con = self.acceptAndHandshake() catch |e| {
-            log.warn("Connection initialization failure: {}", .{e});
-            return true;
-        };
-        {
-            errdefer con.deinit();
-            try self.clients.append(alloc, con);
-        }
-        errdefer self.clients.pop().?.deinit();
+        if (acceptNewClient(self, alloc)) |con| {
+            var add_ev: std.posix.system.epoll_event = .{
+                .events = std.os.linux.EPOLL.IN,
+                .data = .{ .fd = con.con.stream.handle },
+            };
 
-        var add_ev: std.posix.system.epoll_event = .{
-            .events = std.os.linux.EPOLL.IN,
-            .data = .{ .fd = con.con.stream.handle },
-        };
-        try std.posix.epoll_ctl(epfd, std.os.linux.EPOLL.CTL_ADD, con.con.stream.handle, &add_ev);
+            try std.posix.epoll_ctl(epfd, std.os.linux.EPOLL.CTL_ADD, con.con.stream.handle, &add_ev);
+        } else |e| {
+            std.log.err("Couldn't accept new client: {}", .{e});
+        }
 
         return true;
     }
@@ -117,9 +118,44 @@ pub fn onFdReadable(
         return true;
     }
 
-    // TODO: handle packet
+    var read_buf: [512]u8 = undefined;
+    var reader = client.con.stream.reader(&read_buf);
+
+    var write_buf: [512]u8 = undefined;
+    var writer = client.con.stream.writer(&write_buf);
+
+    try reader.interface().fillMore();
+
+    handle_buflen: switch (reader.interface().bufferedLen()) {
+        0 => {
+            // buffer is empty, no more partially read packets
+        },
+        else => {
+            self.handleRequest(reader.interface(), &writer.interface) catch |e| {
+                std.log.err("Couldn't handle client request: {}", .{e});
+                client.deinit();
+                _ = self.clients.swapRemove(client_i);
+            };
+            try writer.interface.flush();
+            continue :handle_buflen reader.interface().bufferedLen();
+        },
+    }
 
     return true;
+}
+
+fn acceptNewClient(self: *IPCHandler, alloc: std.mem.Allocator) !*Connection {
+    const con = try self.acceptAndHandshake();
+    {
+        errdefer con.deinit();
+        try self.clients.append(alloc, con);
+    }
+    errdefer self.clients.pop().?.deinit();
+
+    const con_ptr = &self.clients.items[self.clients.items.len - 1];
+    try self.sendInitialStateTo(con_ptr);
+
+    return con_ptr;
 }
 
 fn acceptAndHandshake(self: *IPCHandler) !Connection {
@@ -143,4 +179,71 @@ fn acceptAndHandshake(self: *IPCHandler) !Connection {
     log.info("client handshake successful", .{});
 
     return .{ .con = con };
+}
+
+fn sendInitialStateTo(self: *IPCHandler, con: *Connection) !void {
+    var buf: [512]u8 = undefined;
+    var writer = con.con.stream.writer(&buf);
+    for (self.wm.outputs.items) |outp| {
+        const name = (outp.wl_output orelse continue).outp_name orelse continue;
+        const ts = &(outp.tag_space orelse continue);
+
+        try proto.writePkt(&writer.interface, proto.pkt.Event{ .tag_change = .{
+            .output = name,
+            .primary = ts.primary,
+            .mask = ts.mask,
+        } });
+    }
+
+    try writer.interface.flush();
+}
+
+fn handleRequest(
+    self: *IPCHandler,
+    reader: *std.Io.Reader,
+    writer: *std.Io.Writer,
+) !void {
+    var pkt = try proto.readPkt(reader, proto.pkt.Request, self.wm.globals.alloc);
+    defer proto.freePkt(self.wm.globals.alloc, proto.pkt.Request, &pkt);
+
+    switch (pkt) {
+        .set_tags => |req| {
+            if (req.mask == 0) {
+                // TODO: reconsider this limitation.  This is mostly carried over from
+                // River-classic, but why exactly shouldn't we have a zero mask?
+                try proto.writePkt(writer, proto.pkt.Event{ .action_result = .{
+                    .serial = req.serial,
+                    .success = false,
+                    .msg = "Attempt to set mask to 0",
+                } });
+                return;
+            }
+
+            const output = for (self.wm.outputs.items) |outp| {
+                const name = (outp.wl_output orelse continue).outp_name orelse continue;
+                if (std.mem.eql(u8, req.output, name)) break outp;
+            } else {
+                var res_buf: [128]u8 = undefined;
+                try proto.writePkt(writer, proto.pkt.Event{ .action_result = .{
+                    .serial = req.serial,
+                    .success = false,
+                    .msg = try std.fmt.bufPrint(&res_buf, "No output `{s}`", .{req.output}),
+                } });
+                return;
+            };
+
+            if (output.tag_space) |*ts| {
+                ts.primary = req.primary;
+                ts.mask = req.mask;
+                try self.wm.notifyTagsChangedOn(output);
+                self.wm.requestManage();
+            }
+
+            try proto.writePkt(writer, proto.pkt.Event{ .action_result = .{
+                .serial = req.serial,
+                .success = true,
+                .msg = "",
+            } });
+        },
+    }
 }

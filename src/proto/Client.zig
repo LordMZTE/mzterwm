@@ -33,3 +33,13 @@ pub fn deinit(self: *const Client) void {
 pub fn waitEvent(self: *Client, alloc: std.mem.Allocator) !proto.pkt.Event {
     return proto.readPkt(self.reader.interface(), proto.pkt.Event, alloc);
 }
+
+/// Sends a request to the server.  Caller must call `flush` after all desired requests have been
+/// sent.
+pub fn sendRequest(self: *Client, req: proto.pkt.Request) !void {
+    try proto.writePkt(&self.writer.interface, req);
+}
+
+pub fn flush(self: *Client) !void {
+    try self.writer.interface.flush();
+}

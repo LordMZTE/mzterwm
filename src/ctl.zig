@@ -22,6 +22,7 @@ const Options = struct {
 
 pub const Verb = union(enum) {
     listen: struct {},
+    @"set-tags": struct {},
 };
 
 pub fn main() !u8 {
@@ -57,11 +58,6 @@ pub fn main() !u8 {
         return 0;
     }
 
-    if (parse_res.positionals.len != 0) {
-        std.log.err("Expected no positional arguments, got {}", .{parse_res.positionals.len});
-        return 1;
-    }
-
     const verb = parse_res.verb orelse {
         // TODO: this is also hit if the user enters an unknown verb.  Probably a bug in zig-args.
         std.log.err("No verb was given.  See --help.", .{});
@@ -91,17 +87,57 @@ pub fn main() !u8 {
     }
 
     switch (verb) {
-        .listen => while (true) {
-            var ev = try client.waitEvent(alloc);
-            defer proto.freePkt(alloc, proto.pkt.Event, &ev);
+        .listen => {
+            try checkPositionals(0, parse_res.positionals.len);
+            while (true) {
+                var ev = try client.waitEvent(alloc);
+                defer proto.freePkt(alloc, proto.pkt.Event, &ev);
 
-            try std.json.Stringify.value(ev, .{}, &stdout.interface);
-            try stdout.interface.writeByte('\n');
-            try stdout.interface.flush();
+                try std.json.Stringify.value(ev, .{}, &stdout.interface);
+                try stdout.interface.writeByte('\n');
+                try stdout.interface.flush();
+            }
+        },
+        .@"set-tags" => {
+            try checkPositionals(3, parse_res.positionals.len);
+            const output = parse_res.positionals[0];
+            const primary = try std.fmt.parseInt(proto.TagIdx, parse_res.positionals[1], 0);
+            const mask = try std.fmt.parseInt(proto.TagIdx, parse_res.positionals[2], 0);
+            try client.sendRequest(.{ .set_tags = .{
+                .output = output,
+                .primary = primary,
+                .mask = mask,
+                .serial = 0,
+            } });
+
+            while (true) {
+                var ev = try client.waitEvent(alloc);
+                defer proto.freePkt(alloc, proto.pkt.Event, &ev);
+                switch (ev) {
+                    .action_result => |res| {
+                        std.debug.assert(res.serial == 0);
+                        if (res.msg.len != 0) {
+                            try stdout.interface.writeAll(res.msg);
+                            try stdout.interface.writeByte('\n');
+                            try stdout.interface.flush();
+                        }
+
+                        return if (res.success) 0 else 1;
+                    },
+                    else => {},
+                }
+            }
         },
     }
 
     return 0;
+}
+
+fn checkPositionals(expected: usize, actual: usize) !void {
+    if (expected != actual) {
+        std.log.err("Expected {} positional arguments, got {}", .{ expected, actual });
+        return error.InvalidArguments;
+    }
 }
 
 fn printHelp(to: *std.Io.Writer) !void {
@@ -109,7 +145,9 @@ fn printHelp(to: *std.Io.Writer) !void {
     try to.writeAll(
         \\
         \\Verbs:
-        \\  listen         Listen to incoming events and print them in JSON format.
+        \\  listen                              Listen to incoming events and print them in JSON
+        \\                                      format.
+        \\  set-tags [OUTPUT] [PRIMARY] [MASK]  Set the active tags and mask on the given output
         \\
     );
 }
