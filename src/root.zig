@@ -30,7 +30,6 @@ pub fn mainLoop(dpy: *wl.Display, wm: *WindowManager, ipc: *IPCHandler) !void {
         var sigs = std.posix.sigemptyset();
         std.posix.sigaddset(&sigs, std.os.linux.SIG.INT);
         std.posix.sigaddset(&sigs, std.os.linux.SIG.TERM);
-        std.posix.sigaddset(&sigs, std.os.linux.SIG.CHLD);
         // Maybe for future config hot reloading
         //std.posix.sigaddset(&sigs, std.os.linux.SIG.USR1);
         break :sigs sigs;
