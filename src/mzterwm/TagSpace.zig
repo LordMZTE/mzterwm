@@ -138,3 +138,14 @@ pub fn maybeUpdateFocus(self: *TagSpace, comptime rotFn: fn (*usize, usize) void
         .exclusive => {},
     }
 }
+
+pub fn computeOccupiedTags(self: *TagSpace) Mask {
+    var occupied: TagSpace.Mask = 0;
+    var maybe_node = self.wm.windows.first;
+    while (maybe_node) |node| : (maybe_node = node.next) {
+        const win: *WindowManager.Window = .fromListNode(node);
+        if (win.tag_space != self) continue;
+        occupied |= win.mask;
+    }
+    return occupied;
+}

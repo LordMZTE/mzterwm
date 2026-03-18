@@ -192,6 +192,7 @@ fn sendInitialStateTo(self: *IPCHandler, con: *Connection) !void {
             .output = name,
             .primary = ts.primary,
             .mask = ts.mask,
+            .occupied = ts.computeOccupiedTags(),
         } });
     }
 
@@ -244,7 +245,7 @@ fn handleRequest(
             if (output.tag_space) |*ts| {
                 ts.primary = req.primary;
                 ts.mask = req.mask;
-                try self.wm.notifyTagsChangedOn(output);
+                self.wm.notifyTagsChangedOn(output);
                 self.wm.requestManage();
             }
 

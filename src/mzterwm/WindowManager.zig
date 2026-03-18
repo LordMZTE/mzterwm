@@ -300,6 +300,12 @@ pub const Window = struct {
                         ts.selected_window -= 1;
                     }
                     ts.commitFocus() catch @panic("OOM");
+
+                    for (self.wm.outputs.items) |outp| {
+                        if (&(outp.tag_space orelse continue) != ts) continue;
+                        self.wm.notifyTagsChangedOn(outp);
+                        break;
+                    }
                 } else {
                     self.wm.windows.remove(&self.winlist_node);
                 }
@@ -499,10 +505,10 @@ fn onTagKeyEvent(_: *river.XkbBindingV1, ev: river.XkbBindingV1.Event, keydat: *
                 // TODO: this is suboptimal because we send two events but flush each individually.
                 // Perhaps consider persistent per-client buffers.
                 keydat.wm.ipc.emitEventToAll(.tag_switch_start);
-                try keydat.wm.notifyTagsChangedOn(outp);
+                keydat.wm.notifyTagsChangedOn(outp);
             } else {
                 ts.mask |= @as(TagSpace.Mask, 1) << tag;
-                try keydat.wm.notifyTagsChangedOn(outp);
+                keydat.wm.notifyTagsChangedOn(outp);
             }
         },
         .released => {
@@ -580,17 +586,21 @@ pub fn unfocus(self: *WindowManager) void {
 }
 
 /// Will invalide windows on the given output and notify IPC clients and layouts of a tag change
-/// event.
-pub fn notifyTagsChangedOn(self: *WindowManager, outp: *Output) !void {
+/// event.  Should also be called when windows move between outputs and tags as this also sends
+/// occupied tags.
+pub fn notifyTagsChangedOn(self: *WindowManager, outp: *Output) void {
     const ts = &(outp.tag_space orelse return);
     ts.windows_valid = false;
-    if (outp.wl_output) |wl|
-        if (wl.outp_name) |name|
+    if (outp.wl_output) |wl| {
+        if (wl.outp_name) |name| {
             self.ipc.emitEventToAll(.{ .tag_change = .{
                 .mask = ts.mask,
                 .primary = ts.primary,
                 .output = name,
+                .occupied = ts.computeOccupiedTags(),
             } });
+        }
+    }
 
     std.log.debug(
         "tags switched; primary: {}, mask: {b}",
@@ -672,6 +682,10 @@ fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
                 ts.selected_window = 0;
                 ts.windows_valid = false;
                 try ts.commitFocus();
+            }
+
+            if (sel_outp) |outp| {
+                self.notifyTagsChangedOn(outp);
             }
         },
         .output => |outp| {
@@ -837,6 +851,6 @@ pub fn updateActiveLayout(self: *WindowManager) void {
         switch (new_layout) {
             inline else => |k| @field(self.wm.layout_global, @tagName(k)).enter(),
         }
-            self.prev_active_layout = new_layout;
+        self.prev_active_layout = new_layout;
     }
 }

@@ -48,4 +48,7 @@ pub const TagChange = struct {
 
     /// The new primary tag
     primary: proto.TagIdx,
+
+    /// A mask of tags on this output that contains those tags that have a window on them.
+    occupied: proto.TagMask,
 };

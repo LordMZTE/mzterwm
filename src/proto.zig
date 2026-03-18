@@ -6,7 +6,7 @@ pub const Client = @import("proto/Client.zig");
 
 /// The current protocol version.  When a client connects, this must match.
 pub const ProtocolVersion = u32;
-pub const version: ProtocolVersion = 1;
+pub const version: ProtocolVersion = 2;
 
 pub const tag_bitwidth = 32;
 pub const TagMask = std.meta.Int(.unsigned, tag_bitwidth);
