@@ -259,11 +259,25 @@ pub fn rotFocusFwd(focus: *usize, n: usize) void {
     focus.* = if (focus.* >= n - 1) 0 else focus.* + 1;
 }
 
+/// Like rotFocusFwd, but return true if wrapping happened
+pub fn rotFocusFwdCheckWrap(focus: *usize, n: usize) bool {
+    const prev = focus.*;
+    rotFocusFwd(focus, n);
+    return focus.* < prev;
+}
+
 /// Rotate some focus index backward
 pub fn rotFocusBck(focus: *usize, n: usize) void {
     if (n == 0) return;
 
     focus.* = if (focus.* == 0 or focus.* > n - 1) n - 1 else focus.* - 1;
+}
+
+/// Like rotFocusBck, but return true if wrapping happened
+pub fn rotFocusBckCheckWrap(focus: *usize, n: usize) bool {
+    const prev = focus.*;
+    rotFocusBck(focus, n);
+    return focus.* > prev;
 }
 
 test {

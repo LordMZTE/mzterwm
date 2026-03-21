@@ -37,6 +37,8 @@
 .keybinds = [
     { .key = "j", .mods = { .alt = true }, .action = FocusWindow { .direction = "next" } },
     { .key = "k", .mods = { .alt = true }, .action = FocusWindow { .direction = "prev" } },
+    { .key = "j", .mods = { .shift = true, .alt = true }, .action = MoveWindow { .direction = "next" } },
+    { .key = "k", .mods = { .shift = true, .alt = true }, .action = MoveWindow { .direction = "prev" } },
     { .key = "period", .mods = { .alt = true }, .action = FocusOutput { .direction = "next" } },
     { .key = "comma", .mods = { .alt = true }, .action = FocusOutput { .direction = "prev" } },
     { .key = "Return", .mods = { .alt = true }, .action = Spawn { .argv = ["foot"] } },
