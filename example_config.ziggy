@@ -35,13 +35,15 @@
 // This differs from the default value.  By default, there are no keybinds.  You have to define them
 // all.  You probably also want to use meta instead of alt here.
 .keybinds = [
+    { .key = "Return", .mods = { .alt = true }, .action = Spawn { .argv = ["foot"] } },
     { .key = "j", .mods = { .alt = true }, .action = FocusWindow { .direction = "next" } },
     { .key = "k", .mods = { .alt = true }, .action = FocusWindow { .direction = "prev" } },
     { .key = "j", .mods = { .shift = true, .alt = true }, .action = MoveWindow { .direction = "next" } },
     { .key = "k", .mods = { .shift = true, .alt = true }, .action = MoveWindow { .direction = "prev" } },
     { .key = "period", .mods = { .alt = true }, .action = FocusOutput { .direction = "next" } },
     { .key = "comma", .mods = { .alt = true }, .action = FocusOutput { .direction = "prev" } },
-    { .key = "Return", .mods = { .alt = true }, .action = Spawn { .argv = ["foot"] } },
+    { .key = "period", .mods = { .alt = true , .shift = true}, .action = MoveWindowOutput { .direction = "next" } },
+    { .key = "comma", .mods = { .alt = true, .shift = true }, .action = MoveWindowOutput { .direction = "prev" } },
     { .key = "1", .mods = { .alt = true, .shift = true }, .action = SetWindowTags { .to = 1 } },
     { .key = "2", .mods = { .alt = true, .shift = true }, .action = SetWindowTags { .to = 2 } },
     { .key = "3", .mods = { .alt = true, .shift = true }, .action = SetWindowTags { .to = 4 } },

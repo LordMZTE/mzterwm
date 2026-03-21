@@ -9,6 +9,7 @@ pub const Action = union(enum) {
     FocusWindow: struct { direction: FocusDirection },
     FocusOutput: struct { direction: FocusDirection },
     MoveWindow: struct { direction: FocusDirection },
+    MoveWindowOutput: struct { direction: FocusDirection },
     SetWindowTags: struct { to: TagSpace.Mask },
     AddWindowTags: struct { tags: TagSpace.Mask },
     Spawn: struct { argv: []const []const u8 },
@@ -39,7 +40,7 @@ pub const Action = union(enum) {
             .MoveWindow => |opt| {
                 const ts = &((wm.selectedOutput() orelse return).tag_space orelse return);
                 const wins = try ts.getWindows();
-                if (ts.selected_window >= wins.len) return;
+                if (ts.selected_window >= wins.len or wins.len < 2) return;
 
                 var other_idx = ts.selected_window;
                 const wrap = switch (opt.direction) {
@@ -57,6 +58,31 @@ pub const Action = union(enum) {
 
                 ts.selected_window = other_idx;
                 ts.windows_valid = false;
+            },
+            .MoveWindowOutput => |opt| {
+                if (wm.outputs.items.len < 2) return;
+                const cur_outp = wm.selectedOutput() orelse return;
+                const cur_ts = &(cur_outp.tag_space orelse return);
+
+                const wins = try cur_ts.getWindows();
+                if (cur_ts.selected_window >= wins.len) return;
+                const win = wins[cur_ts.selected_window];
+
+                var other_idx = wm.selected_output;
+                switch (opt.direction) {
+                    .next => mzterwm.rotFocusFwd(&other_idx, wm.outputs.items.len),
+                    .prev => mzterwm.rotFocusBck(&other_idx, wm.outputs.items.len),
+                }
+                const other_outp = wm.outputs.items[other_idx];
+
+                const other_ts = &(other_outp.tag_space orelse return);
+
+                win.tag_space = other_ts;
+                cur_ts.windows_valid = false;
+                other_ts.windows_valid = false;
+
+                wm.notifyTagsChangedOn(cur_outp);
+                wm.notifyTagsChangedOn(other_outp);
             },
             inline .SetWindowTags, .AddWindowTags => |opt, tag| {
                 const outp = wm.selectedOutput() orelse return;
