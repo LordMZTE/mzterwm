@@ -2,12 +2,15 @@ const std = @import("std");
 const mzterwm = @import("../root.zig");
 
 const WindowManager = @import("WindowManager.zig");
+const TagSpace = @import("TagSpace.zig");
 
 pub const Action = union(enum) {
     // These are in PascalCase for the Ziggy config to look nice.
     FocusWindow: struct { direction: FocusDirection },
     FocusOutput: struct { direction: FocusDirection },
     MoveWindow: struct { direction: FocusDirection },
+    SetWindowTags: struct { to: TagSpace.Mask },
+    AddWindowTags: struct { tags: TagSpace.Mask },
     Spawn: struct { argv: []const []const u8 },
 
     pub fn perform(self: Action, wm: *WindowManager) !void {
@@ -54,6 +57,21 @@ pub const Action = union(enum) {
 
                 ts.selected_window = other_idx;
                 ts.windows_valid = false;
+            },
+            inline .SetWindowTags, .AddWindowTags => |opt, tag| {
+                const outp = wm.selectedOutput() orelse return;
+                const ts = &(outp.tag_space orelse return);
+                const wins = try ts.getWindows();
+                if (ts.selected_window >= wins.len) return;
+
+                const cur_win = wins[ts.selected_window];
+                if (comptime tag == .SetWindowTags) {
+                    cur_win.mask = opt.to;
+                } else {
+                    cur_win.mask |= opt.tags;
+                }
+                ts.windows_valid = false;
+                wm.notifyTagsChangedOn(outp);
             },
             .Spawn => |opt| {
                 const t = try std.Thread.spawn(.{}, spawnAndWaitChild, .{ wm.globals.alloc, opt.argv });
