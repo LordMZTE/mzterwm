@@ -13,32 +13,19 @@
     }: utils.lib.eachDefaultSystem (system:
     let
       pkgs = import nixpkgs { inherit system; };
-      deps = pkgs.callPackage ./deps.nix { };
+      mzterwm = pkgs.callPackage ./package.nix { };
     in
-    rec {
-      packages.default = pkgs.stdenv.mkDerivation {
-        name = "mzterwm";
-        src = ./.;
-
-        nativeBuildInputs = with pkgs; [
-          zig_0_15.hook
-          pkg-config
-        ];
-
-        buildInputs = with pkgs; [
-          wayland
-          wayland-scanner
-          wayland-protocols
-          libxkbcommon
-        ];
-
-        preBuild = ''
-          ln -sf "${deps}" "$ZIG_GLOBAL_CACHE_DIR/p"
-        '';
-      };
-
+    {
+      packages.default = mzterwm;
+      packages.mzterwm = mzterwm;
       devShells.default = pkgs.mkShell {
-        buildInputs = packages.default.buildInputs ++ (with pkgs; [ zig_0_15 pkg-config ]);
+        buildInputs = mzterwm.buildInputs ++ (with pkgs; [
+          zig_0_15
+          pkg-config
+        ]);
+      };
+      overlays.default = final: prev: {
+        mzterwm = final.callPackage ./package.nix { };
       };
     });
 }

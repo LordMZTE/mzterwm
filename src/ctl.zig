@@ -27,7 +27,7 @@ pub const Verb = union(enum) {
 
 pub fn main() !u8 {
     var gpa = if (@import("builtin").mode == .Debug) std.heap.DebugAllocator(.{}).init else {};
-    const alloc = if (@TypeOf(gpa) == void) std.heap.c_allocator else gpa.allocator();
+    const alloc = if (@TypeOf(gpa) == void) std.heap.smp_allocator else gpa.allocator();
     defer if (@TypeOf(gpa) != void) {
         _ = gpa.deinit();
     };
