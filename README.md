@@ -11,7 +11,7 @@ also view multiple of them at once.
 - [x] Tags
 - [x] Output management with ability to restore state after output reconnect
 - [x] Config file
-- [ ] Waybar plugin
+- [x] [Waybar plugin](https://git.mzte.de/LordMZTE/waybar-mzterwm)
 - [x] IPC socket
 - [x] Layer shell WM
 - [x] Focusing Windows
