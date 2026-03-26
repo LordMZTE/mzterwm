@@ -592,8 +592,8 @@ pub fn deinit(self: *WindowManager) void {
 
     var win_node = self.windows.first;
     while (win_node) |node| {
+        win_node = node.next;
         const win: *Window = .fromListNode(node);
-        win_node = win.winlist_node.next;
         win.deinit();
     }
     self.window_pool.deinit();

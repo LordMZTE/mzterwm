@@ -43,7 +43,8 @@ pub fn setupListenerAndCollect(
         errdefer {
             if (pog.partial.rwm) |it| it.destroy();
             var maybe_node = pog.partial.outputs.first;
-            while (maybe_node) |node| : (maybe_node = node.next) {
+            while (maybe_node) |node| {
+                maybe_node = node.next;
                 Output.fromListNode(node).deinit();
             }
         }
@@ -137,7 +138,8 @@ fn regListener(reg: *wl.Registry, ev: wl.Registry.Event, pog: *PartialOrGlobals)
             };
 
             var maybe_node = outputs.first;
-            while (maybe_node) |node| : (maybe_node = node.next) {
+            while (maybe_node) |node| {
+                maybe_node = node.next;
                 const output: *Output = .fromListNode(node);
                 if (output.name == g.name) {
                     outputs.remove(node);
@@ -157,9 +159,8 @@ pub fn deinit(self: *Globals) void {
 
     var maybe_node = self.outputs.first;
     while (maybe_node) |node| {
-        const outp = Output.fromListNode(node);
-        maybe_node = outp.node.next;
-        outp.deinit();
+        maybe_node = node.next;
+        Output.fromListNode(node).deinit();
     }
 
     const pog: *PartialOrGlobals = @fieldParentPtr("globals", self);
