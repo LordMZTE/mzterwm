@@ -108,7 +108,7 @@ pub fn commitFocus(self: *TagSpace) error{OutOfMemory}!void {
     if (self.wm.focus_override != .none) return;
 
     const wins = try self.getWindows();
-    const to_focus = find_win: {
+    self.wm.focused_window = find_win: {
         if (wins.len == 1 and wins[0].render.want_fullscreen) break :find_win wins[0];
 
         if (self.selected_window >= wins.len) {
@@ -119,7 +119,8 @@ pub fn commitFocus(self: *TagSpace) error{OutOfMemory}!void {
         break :find_win wins[self.selected_window];
     };
 
-    to_focus.focus();
+    self.wm.focused_window_dirty = true;
+
     self.wm.updateActiveLayout();
 }
 

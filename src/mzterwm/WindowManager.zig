@@ -32,6 +32,11 @@ keys: KeyManager,
 /// Index into `outputs` for the currently selected output.  This always has to be in bounds.
 selected_output: usize = 0,
 
+/// The currently focused window.  Will be sent to river the next manage sequence iff
+/// focused_window_dirty.
+focused_window: ?*Window,
+focused_window_dirty: bool,
+
 /// A slice containing each workspace key.
 tag_keys: []TagKeyData,
 
@@ -474,6 +479,8 @@ pub fn init(globals: *Globals, ipc: *IPCHandler, config: Config) WindowManager {
         .windows = .{},
         .window_pool = .init(globals.alloc),
         .keys = .init(globals),
+        .focused_window = null,
+        .focused_window_dirty = false,
         .tag_keys = undefined, // initialized during setup
         .tag_keys_down = 0,
         .global_user_keys = undefined, // initialized during setup
@@ -620,9 +627,8 @@ pub fn selectedOutput(self: *WindowManager) ?*Output {
 
 /// Tell River to clear the focus.
 pub fn unfocus(self: *WindowManager) void {
-    for (self.keys.seats.items) |seat| {
-        seat.river.clearFocus();
-    }
+    self.focused_window_dirty |= self.focused_window != null;
+    self.focused_window = null;
 }
 
 /// Will invalide windows on the given output and notify IPC clients and layouts of a tag change
@@ -804,6 +810,19 @@ fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
 
 fn performManage(self: *WindowManager) !void {
     defer self.globals.rwm.manageFinish();
+
+    if (self.focused_window_dirty) {
+        if (self.focused_window) |win| {
+            for (self.keys.seats.items) |seat| {
+                seat.river.focusWindow(win.river);
+            }
+        } else {
+            for (self.keys.seats.items) |seat| {
+                seat.river.clearFocus();
+            }
+        }
+        self.focused_window_dirty = false;
+    }
 
     // loop over all windows, setting initial properties
     var maybe_node = self.windows.first;
