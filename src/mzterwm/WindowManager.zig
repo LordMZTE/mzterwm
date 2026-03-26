@@ -296,13 +296,14 @@ pub const Window = struct {
                     const ts_wins = ts.getWindows() catch @panic("OOM");
                     self.wm.windows.remove(&self.winlist_node);
                     ts.windows_valid = false;
-                    const this_idx = std.mem.indexOfScalar(*Window, ts_wins, self) orelse unreachable;
-                    if (ts_wins.len > 1 and ts.selected_window >= ts_wins.len - 1) {
-                        ts.selected_window = ts_wins.len - 2;
-                    } else if (ts.selected_window > this_idx) {
-                        ts.selected_window -= 1;
+                    if (std.mem.indexOfScalar(*Window, ts_wins, self)) |this_idx| {
+                        if (ts_wins.len > 1 and ts.selected_window >= ts_wins.len - 1) {
+                            ts.selected_window = ts_wins.len - 2;
+                        } else if (ts.selected_window > this_idx) {
+                            ts.selected_window -= 1;
+                        }
+                        ts.commitFocus() catch @panic("OOM");
                     }
-                    ts.commitFocus() catch @panic("OOM");
 
                     for (self.wm.outputs.items) |outp| {
                         if (&(outp.tag_space orelse continue) != ts) continue;
