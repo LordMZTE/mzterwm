@@ -32,6 +32,7 @@ borders: struct {
     width: u31 = 4,
     base_color: Color = .{ .vec = .{ 0x80, 0x80, 0x80, 0x80 } },
     focus_color: Color = .{ .vec = .{ 0xff, 0x00, 0xff, 0xff } },
+    fullscreen_color: Color = .{ .vec = .{ 0x00, 0x00, 0xff, 0xff } },
 } = .{},
 
 gaps: struct {

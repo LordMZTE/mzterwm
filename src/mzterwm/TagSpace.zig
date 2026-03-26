@@ -71,6 +71,11 @@ pub fn deinit(self: *TagSpace) void {
 
 pub fn evacuateTo(self: *TagSpace, other: ?*TagSpace) !void {
     for (try self.getWindows()) |win| {
+        if (win.render.is_fullscreen) {
+            // River unfullscreens windows on output disconnect.
+            win.render.dirty.is_fullscreen = true;
+        }
+
         win.tag_space = other;
     }
     if (other) |o| o.windows_valid = false;
@@ -84,7 +89,6 @@ pub fn getWindows(self: *TagSpace) error{OutOfMemory}![]*WindowManager.Window {
 
     self.windows.clearRetainingCapacity();
 
-    var i: u32 = 0;
     var maybe_node = self.wm.windows.first;
     while (maybe_node) |node| : (maybe_node = node.next) {
         const win: *WindowManager.Window = .fromListNode(node);
@@ -92,12 +96,6 @@ pub fn getWindows(self: *TagSpace) error{OutOfMemory}![]*WindowManager.Window {
         if (win.tag_space != self or win.mask & self.mask == 0) continue;
 
         try self.windows.append(self.wm.globals.alloc, win);
-        win.render.updateBorderColor(if (self.wm.focus_override == .none and
-            i == self.selected_window)
-            self.wm.config.borders.focus_color.vec
-        else
-            self.wm.config.borders.base_color.vec);
-        i += 1;
     }
 
     self.windows_valid = true;
@@ -110,12 +108,18 @@ pub fn commitFocus(self: *TagSpace) error{OutOfMemory}!void {
     if (self.wm.focus_override != .none) return;
 
     const wins = try self.getWindows();
-    if (self.selected_window >= wins.len) {
-        self.wm.unfocus();
-        return;
-    }
+    const to_focus = find_win: {
+        if (wins.len == 1 and wins[0].render.want_fullscreen) break :find_win wins[0];
 
-    wins[self.selected_window].focus();
+        if (self.selected_window >= wins.len) {
+            self.wm.unfocus();
+            return;
+        }
+
+        break :find_win wins[self.selected_window];
+    };
+
+    to_focus.focus();
     self.wm.updateActiveLayout();
 }
 

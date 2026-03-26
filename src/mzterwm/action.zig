@@ -11,6 +11,7 @@ pub const Action = union(enum) {
     MoveWindow: struct { direction: FocusDirection },
     MoveWindowOutput: struct { direction: FocusDirection },
     CloseWindow: struct {},
+    ToggleWindowFullscreen: struct {},
     SetWindowTags: struct { to: TagSpace.Mask },
     AddWindowTags: struct { tags: TagSpace.Mask },
     Spawn: struct { argv: []const []const u8 },
@@ -77,14 +78,7 @@ pub const Action = union(enum) {
                 }
                 const other_outp = wm.outputs.items[other_idx];
 
-                const other_ts = &(other_outp.tag_space orelse return);
-
-                win.tag_space = other_ts;
-                cur_ts.windows_valid = false;
-                other_ts.windows_valid = false;
-
-                wm.notifyTagsChangedOn(cur_outp);
-                wm.notifyTagsChangedOn(other_outp);
+                wm.moveWindowTo(win, other_outp);
             },
             .CloseWindow => {
                 const outp = wm.selectedOutput() orelse return;
@@ -98,6 +92,17 @@ pub const Action = union(enum) {
                 // One will start afterwards, since they're triggered by keybindings.
                 // TODO: consider this once we make actions triggerable via IPC.
                 cur_win.should_close = true;
+            },
+            .ToggleWindowFullscreen => {
+                const outp = wm.selectedOutput() orelse return;
+                const ts = &(outp.tag_space orelse return);
+                const wins = try ts.getWindows();
+                if (ts.selected_window >= wins.len) return;
+
+                const cur_win = wins[ts.selected_window];
+
+                cur_win.render.want_fullscreen = !cur_win.render.want_fullscreen;
+                cur_win.render.dirty.want_fullscreen = true;
             },
             inline .SetWindowTags, .AddWindowTags => |opt, tag| {
                 const outp = wm.selectedOutput() orelse return;

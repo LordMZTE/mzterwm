@@ -15,6 +15,7 @@ also view multiple of them at once.
 - [x] IPC socket
 - [x] Layer shell WM
 - [x] Focusing Windows
+- [x] Fullscreen Windows
 - [ ] ~Multi-Seat~
     - mzterwm currently contains an untested and half-assed attempt at not exploding with multiple
       seats. Stuff like each seat having it's own focused window and such is entirely unimplemented

@@ -245,10 +245,19 @@ pub const Window = struct {
         set_fixed_props: bool = false,
         border_width: u31 = 0,
         border_color: @Vector(4, u8) = @splat(0),
+
+        /// True iff the window is marked to be fullscreened once possible.
+        want_fullscreen: bool = false,
+
+        /// True iff the window is actually fullscreened.
+        is_fullscreen: bool = false,
+
         dirty: packed struct {
             pos: bool = false,
             size: bool = false,
             border: bool = false,
+            want_fullscreen: bool = false,
+            is_fullscreen: bool = false,
         } = .{},
 
         /// Updates the region this whole window, including borders, should take up.
@@ -259,14 +268,6 @@ pub const Window = struct {
             if (@reduce(.Or, self.region.size != inner.size)) self.dirty.size = true;
 
             self.region = inner;
-        }
-
-        pub fn updateBorderColor(self: *RenderState, new: @Vector(4, u8)) void {
-            if (self.border_width == 0) return;
-            if (@reduce(.Or, self.border_color != new)) {
-                self.dirty.border = true;
-                self.border_color = new;
-            }
         }
     };
 
@@ -285,6 +286,29 @@ pub const Window = struct {
 
     pub fn fromListNode(node: *std.DoublyLinkedList.Node) *Window {
         return @alignCast(@fieldParentPtr("winlist_node", node));
+    }
+
+    /// Figures out what the color for the window border should be, and potentially updates the
+    /// render state.
+    pub fn updateBorderColor(self: *Window) !void {
+        if (self.render.border_width == 0) return;
+        const new = try self.computeWantedBorderColor() orelse return;
+
+        if (@reduce(.Or, self.render.border_color != new)) {
+            self.render.dirty.border = true;
+            self.render.border_color = new;
+        }
+    }
+
+    fn computeWantedBorderColor(self: *Window) !?@Vector(4, u8) {
+        const ts = self.tag_space orelse return null;
+        const ts_wins = try ts.getWindows();
+        const this_idx = std.mem.indexOfScalar(*Window, ts_wins, self);
+        if (this_idx == ts.selected_window) return self.wm.config.borders.focus_color.vec;
+
+        if (self.render.want_fullscreen) return self.wm.config.borders.fullscreen_color.vec;
+
+        return self.wm.config.borders.base_color.vec;
     }
 
     fn listener(_: *river.WindowV1, ev: river.WindowV1.Event, self: *Window) void {
@@ -337,8 +361,20 @@ pub const Window = struct {
             .show_window_menu_requested => {},
             .maximize_requested => {},
             .unmaximize_requested => {},
-            .fullscreen_requested => {}, // TODO: fullscreen the window
-            .exit_fullscreen_requested => {},
+            .fullscreen_requested => {
+                // We intentionally ignore the wanted output of the client.  That's window manager
+                // buisiness.
+                if (!self.render.want_fullscreen) {
+                    self.render.want_fullscreen = true;
+                    self.render.dirty.want_fullscreen = true;
+                }
+            },
+            .exit_fullscreen_requested => {
+                if (self.render.want_fullscreen) {
+                    self.render.want_fullscreen = false;
+                    self.render.dirty.want_fullscreen = true;
+                }
+            },
             .minimize_requested => {},
             .unreliable_pid => {},
             .presentation_hint => {},
@@ -606,6 +642,11 @@ pub fn notifyTagsChangedOn(self: *WindowManager, outp: *Output) void {
         }
     }
 
+    const cur_outp = self.selectedOutput();
+    if (cur_outp == outp) {
+        ts.commitFocus() catch @panic("OOM");
+    }
+
     std.log.debug(
         "tags switched; primary: {}, mask: {b}",
         .{ ts.primary, ts.mask },
@@ -616,6 +657,28 @@ pub fn notifyTagsChangedOn(self: *WindowManager, outp: *Output) void {
 /// was caused by an IPC request.
 pub fn requestManage(self: *WindowManager) void {
     self.globals.rwm.manageDirty();
+}
+
+pub fn moveWindowTo(self: *WindowManager, win: *Window, to: *Output) void {
+    const prev = win.tag_space;
+    win.tag_space = if (to.tag_space) |*ts| ts else null;
+    if (win.render.is_fullscreen) {
+        // Need to make another fullscreen request to update output
+        win.render.dirty.is_fullscreen = true;
+    }
+
+    if (prev) |ts| {
+        for (self.outputs.items) |outp| {
+            if (outp.tag_space != null and &outp.tag_space.? == ts) {
+                self.notifyTagsChangedOn(outp);
+                break;
+            }
+        } else {
+            @panic("Window has tag space that doesn't belong to any output!");
+        }
+    }
+
+    self.notifyTagsChangedOn(to);
 }
 
 fn rwmListener(
@@ -742,18 +805,50 @@ fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
 fn performManage(self: *WindowManager) !void {
     defer self.globals.rwm.manageFinish();
 
+    // loop over all windows, setting initial properties
+    var maybe_node = self.windows.first;
+    while (maybe_node) |node| : (maybe_node = node.next) {
+        const win: *Window = .fromListNode(node);
+
+        if (!win.render.set_fixed_props) {
+            // TODO: this is a lazy hack
+            win.river.setTiled(.{
+                .top = true,
+                .bottom = true,
+                .left = true,
+                .right = true,
+            });
+
+            win.river.useSsd();
+            win.river.setCapabilities(.{
+                .fullscreen = true,
+            });
+
+            win.render.set_fixed_props = true;
+        }
+    }
+
     for (self.outputs.items) |outp| {
         const ts = &(outp.tag_space orelse continue);
         const windows = try ts.getWindows();
-        try ts.tagdata[ts.primary].layout.performLayout(
-            self,
-            outp.layoutArea().inset(self.config.gaps.output),
-            windows,
-        );
 
-        var maybe_node = self.windows.first;
-        while (maybe_node) |node| : (maybe_node = node.next) {
-            const win: *Window = .fromListNode(node);
+        // Try to find a window to fullscreen.
+        const fullscreen_win = if (windows.len == 1 and
+            windows[0].render.want_fullscreen) windows[0] else null;
+
+        // no need to do layout if we only show one fullscreen window
+        if (fullscreen_win == null) {
+            try ts.tagdata[ts.primary].layout.performLayout(
+                self,
+                outp.layoutArea().inset(self.config.gaps.output),
+                windows,
+            );
+        }
+
+        for (windows) |win| {
+            const should_be_fullscreen = win == fullscreen_win;
+            win.render.dirty.is_fullscreen |= win.render.is_fullscreen != should_be_fullscreen;
+            win.render.is_fullscreen = should_be_fullscreen;
 
             if (!win.render.set_fixed_props) {
                 // TODO: this is a lazy hack
@@ -770,6 +865,29 @@ fn performManage(self: *WindowManager) !void {
                 });
 
                 win.render.set_fixed_props = true;
+            }
+
+            if (win.render.dirty.is_fullscreen) {
+                if (win.render.is_fullscreen) {
+                    win.river.fullscreen(outp.river);
+                    win.render.dirty.is_fullscreen = false;
+                } else {
+                    win.river.exitFullscreen();
+                    win.render.dirty.is_fullscreen = false;
+
+                    // These will be undefined after we exit fullscreen.
+                    win.render.dirty.pos = true;
+                    win.render.dirty.size = true;
+                }
+            }
+
+            if (win.render.dirty.want_fullscreen) {
+                if (win.render.want_fullscreen) {
+                    win.river.informFullscreen();
+                } else {
+                    win.river.informNotFullscreen();
+                }
+                win.render.dirty.want_fullscreen = false;
             }
 
             if (win.render.dirty.size) {
@@ -816,6 +934,7 @@ fn performRender(self: *WindowManager) !void {
                 win.render.dirty.pos = false;
             }
 
+            try win.updateBorderColor();
             const color = mzterwm.colorToRiver(win.render.border_color);
 
             if (win.render.dirty.border) {
