@@ -232,6 +232,9 @@ pub const Window = struct {
     /// that.
     wanted_output: ?[]const u8,
 
+    /// If set to true, request that this window be closed in the next manage sequence.
+    should_close: bool,
+
     render: RenderState,
 
     /// A struct that stores data about the window the we decide and need to tell River about.
@@ -665,6 +668,7 @@ fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
                     const name = wl.outp_name orelse break :outp null;
                     break :outp try self.globals.alloc.dupe(u8, name);
                 },
+                .should_close = false,
             };
 
             std.log.info(
@@ -772,6 +776,11 @@ fn performManage(self: *WindowManager) !void {
                 win.river.setContentClipBox(0, 0, win.render.region.size[0], win.render.region.size[1]);
                 win.river.setDimensionBounds(win.render.region.size[0], win.render.region.size[1]);
                 win.render.dirty.size = false;
+            }
+
+            if (win.should_close) {
+                win.river.close();
+                win.should_close = false;
             }
         }
     }

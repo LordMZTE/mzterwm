@@ -10,9 +10,11 @@ pub const Action = union(enum) {
     FocusOutput: struct { direction: FocusDirection },
     MoveWindow: struct { direction: FocusDirection },
     MoveWindowOutput: struct { direction: FocusDirection },
+    CloseWindow: struct {},
     SetWindowTags: struct { to: TagSpace.Mask },
     AddWindowTags: struct { tags: TagSpace.Mask },
     Spawn: struct { argv: []const []const u8 },
+    Quit: struct {},
 
     pub fn perform(self: Action, wm: *WindowManager) !void {
         switch (self) {
@@ -84,6 +86,19 @@ pub const Action = union(enum) {
                 wm.notifyTagsChangedOn(cur_outp);
                 wm.notifyTagsChangedOn(other_outp);
             },
+            .CloseWindow => {
+                const outp = wm.selectedOutput() orelse return;
+                const ts = &(outp.tag_space orelse return);
+                const wins = try ts.getWindows();
+                if (ts.selected_window >= wins.len) return;
+
+                const cur_win = wins[ts.selected_window];
+
+                // Set the window to be close-requested the next manage sequence.
+                // One will start afterwards, since they're triggered by keybindings.
+                // TODO: consider this once we make actions triggerable via IPC.
+                cur_win.should_close = true;
+            },
             inline .SetWindowTags, .AddWindowTags => |opt, tag| {
                 const outp = wm.selectedOutput() orelse return;
                 const ts = &(outp.tag_space orelse return);
@@ -103,6 +118,9 @@ pub const Action = union(enum) {
                 const t = try std.Thread.spawn(.{}, spawnAndWaitChild, .{ wm.globals.alloc, opt.argv });
                 t.detach();
             },
+            .Quit => {
+                wm.globals.rwm.exitSession();
+            }
         }
     }
 };
