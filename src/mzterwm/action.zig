@@ -81,7 +81,10 @@ pub const Action = union(enum) {
                 }
                 const other_outp = wm.outputs.items[other_idx];
 
-                wm.moveWindowTo(win, other_outp);
+                try wm.moveWindowTo(.{
+                    .win = win,
+                    .to = other_outp,
+                });
             },
             .CloseWindow => {
                 const outp = wm.selectedOutput() orelse return;

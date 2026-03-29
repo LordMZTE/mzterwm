@@ -134,9 +134,11 @@ pub const Output = struct {
                 (win.wanted_output != null and
                     std.mem.eql(u8, win.wanted_output.?, name)))
             {
-                if (win.tag_space) |ts| ts.windows_valid = false;
-                win.tag_space = &self.tag_space.?;
-                self.tag_space.?.windows_valid = false;
+                self.wm.moveWindowTo(.{
+                    .win = win,
+                    .to = self,
+                    .update_wanted = false,
+                }) catch @panic("OOM");
             }
         }
 
@@ -689,12 +691,34 @@ pub fn requestManage(self: *WindowManager) void {
     self.globals.rwm.manageDirty();
 }
 
-pub fn moveWindowTo(self: *WindowManager, win: *Window, to: *Output) void {
-    const prev = win.tag_space;
-    win.tag_space = if (to.tag_space) |*ts| ts else null;
-    if (win.render.is_fullscreen) {
+pub fn moveWindowTo(self: *WindowManager, opts: struct {
+    win: *Window,
+    to: *Output,
+    update_wanted: bool = true,
+}) std.mem.Allocator.Error!void {
+    const prev = opts.win.tag_space;
+    if (opts.to.tag_space) |*ts| {
+        opts.win.tag_space = ts;
+
+        if (opts.update_wanted and
+            opts.to.wl_output != null and opts.to.wl_output.?.outp_name != null)
+        {
+            const new_wanted = try opts.win.wm.globals.alloc.dupe(u8, opts.to.wl_output.?.outp_name.?);
+            if (opts.win.wanted_output) |wo| opts.win.wm.globals.alloc.free(wo);
+            opts.win.wanted_output = new_wanted;
+        }
+    } else {
+        opts.win.tag_space = null;
+
+        if (opts.update_wanted) {
+            if (opts.win.wanted_output) |wo| opts.win.wm.globals.alloc.free(wo);
+            opts.win.wanted_output = null;
+        }
+    }
+
+    if (opts.win.render.is_fullscreen) {
         // Need to make another fullscreen request to update output
-        win.render.dirty.is_fullscreen = true;
+        opts.win.render.dirty.is_fullscreen = true;
     }
 
     if (prev) |ts| {
@@ -708,7 +732,16 @@ pub fn moveWindowTo(self: *WindowManager, win: *Window, to: *Output) void {
         }
     }
 
-    self.notifyTagsChangedOn(to);
+    self.notifyTagsChangedOn(opts.to);
+
+    std.log.debug("moved {*} to {s}; update_wanted: {}", .{
+        opts.win,
+        if (opts.to.wl_output != null and opts.to.wl_output.?.outp_name != null)
+            opts.to.wl_output.?.outp_name.?
+        else
+            "<none>",
+        opts.update_wanted,
+    });
 }
 
 fn rwmListener(
@@ -765,9 +798,9 @@ fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
                 .should_close = false,
             };
 
-            std.log.info(
-                "got new window that wants to be on output {s}",
-                .{window.wanted_output orelse "<none>"},
+            std.log.debug(
+                "got new {*} that wants to be on output {s}",
+                .{ window, window.wanted_output orelse "<none>" },
             );
 
             win.id.setListener(*Window, Window.listener, window);

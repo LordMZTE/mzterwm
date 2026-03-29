@@ -84,7 +84,7 @@ pub fn evacuateTo(self: *TagSpace, other: ?*TagSpace) !void {
 
 /// Gets or computes the list of window indices in this TagSpace.  May also update window state for
 /// stuff like border color.
-pub fn getWindows(self: *TagSpace) error{OutOfMemory}![]*WindowManager.Window {
+pub fn getWindows(self: *TagSpace) std.mem.Allocator.Error![]*WindowManager.Window {
     if (self.windows_valid) return self.windows.items;
 
     self.windows.clearRetainingCapacity();
@@ -104,7 +104,7 @@ pub fn getWindows(self: *TagSpace) error{OutOfMemory}![]*WindowManager.Window {
 
 /// Tells River to actually focus the currently selected window.  Unfocuses any focused window if
 /// there is no selected window.
-pub fn commitFocus(self: *TagSpace) error{OutOfMemory}!void {
+pub fn commitFocus(self: *TagSpace) std.mem.Allocator.Error!void {
     if (self.wm.focus_override != .none) return;
 
     const wins = try self.getWindows();
