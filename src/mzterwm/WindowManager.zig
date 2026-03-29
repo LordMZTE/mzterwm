@@ -324,9 +324,12 @@ pub const Window = struct {
 
     fn computeWantedBorderColor(self: *Window) !?@Vector(4, u8) {
         const ts = self.tag_space orelse return null;
+        const active = self.wm.selectedOutput();
+
         const ts_wins = try ts.getWindows();
         const this_idx = std.mem.indexOfScalar(*Window, ts_wins, self);
-        if (this_idx == ts.selected_window) return self.wm.config.borders.focus_color.vec;
+        if (active != null and active.?.tag_space != null and &active.?.tag_space.? == ts and
+            this_idx == ts.selected_window) return self.wm.config.borders.focus_color.vec;
 
         if (self.render.want_fullscreen) return self.wm.config.borders.fullscreen_color.vec;
 
