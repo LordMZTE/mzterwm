@@ -62,12 +62,9 @@ pub fn build(b: *std.Build) void {
     { // Wayland
         var scanner = Scanner.create(b, .{});
         for ([_][]const u8{
-            "river-input-management-v1.xml",
             "river-layer-shell-v1.xml",
-            "river-libinput-config-v1.xml",
             "river-window-management-v1.xml",
             "river-xkb-bindings-v1.xml",
-            "river-xkb-config-v1.xml",
         }) |proto_xml| {
             const path = b.pathJoin(&.{ "vendor-protocols", proto_xml });
             scanner.addCustomProtocol(b.path(path));
@@ -77,12 +74,9 @@ pub fn build(b: *std.Build) void {
         scanner.generate("wl_output", 4);
 
         // River protocols
-        scanner.generate("river_input_manager_v1", 1);
         scanner.generate("river_layer_shell_v1", 1);
-        scanner.generate("river_libinput_config_v1", 1);
         scanner.generate("river_window_manager_v1", 4);
         scanner.generate("river_xkb_bindings_v1", 2);
-        scanner.generate("river_xkb_config_v1", 1);
 
         const wayland_mod = b.createModule(.{
             .root_source_file = scanner.result,
