@@ -81,7 +81,24 @@ pub const Output = struct {
     /// There's a pointer in Globals.Output to this struct, too and those must be kept in sync.
     wl_output: ?*Globals.Output,
 
-    pub fn deinit(self: *Output) void {
+    /// Should be used as the user-facing destructor.  This is intentionally not named deinit,
+    /// because this ensures that this output object will only be destroyed once the corresponding
+    /// global output is also destroyed.
+    pub fn unref(self: *Output) void {
+        if (self.wl_output) |wl| {
+            self.wl_output = null;
+
+            if (wl.wm_output == null) {
+                wl.destroy();
+                self.destroy();
+            }
+        } else {
+            self.destroy();
+        }
+    }
+
+    /// Actually destroys the struct.  Make sure you've understood what unref does, first.
+    pub fn destroy(self: *Output) void {
         self.river.destroy();
         self.layer.destroy();
         if (self.tag_space) |*ts| ts.deinit();
@@ -137,7 +154,7 @@ pub const Output = struct {
                 for (self.wm.outputs.items, 0..) |other, i| {
                     if (other == self) {
                         const old = self.wm.outputs.orderedRemove(i);
-                        defer old.deinit();
+                        defer old.unref();
 
                         if (self.wm.selected_output > i) {
                             self.wm.selected_output -|= 1;
@@ -593,7 +610,7 @@ pub fn deinit(self: *WindowManager) void {
     self.layout_global.focus.deinit(self);
 
     for (self.outputs.items) |outp| {
-        outp.deinit();
+        outp.unref();
     }
     self.outputs.deinit(self.globals.alloc);
 

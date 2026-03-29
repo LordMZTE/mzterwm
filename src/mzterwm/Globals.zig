@@ -45,7 +45,7 @@ pub fn setupListenerAndCollect(
             var maybe_node = pog.partial.outputs.first;
             while (maybe_node) |node| {
                 maybe_node = node.next;
-                Output.fromListNode(node).deinit();
+                Output.fromListNode(node).unref();
             }
         }
 
@@ -143,8 +143,8 @@ fn regListener(reg: *wl.Registry, ev: wl.Registry.Event, pog: *PartialOrGlobals)
                 const output: *Output = .fromListNode(node);
                 if (output.name == g.name) {
                     outputs.remove(node);
-                    output.deinit();
                     std.log.info("removed output {?s}", .{output.outp_name});
+                    output.unref();
                     break;
                 }
             }
@@ -160,7 +160,7 @@ pub fn deinit(self: *Globals) void {
     var maybe_node = self.outputs.first;
     while (maybe_node) |node| {
         maybe_node = node.next;
-        Output.fromListNode(node).deinit();
+        Output.fromListNode(node).unref();
     }
 
     const pog: *PartialOrGlobals = @fieldParentPtr("globals", self);
@@ -178,7 +178,24 @@ pub const Output = struct {
     /// See comment on WindowManager.Output.wl_output
     wm_output: ?*mzterwm.WindowManager.Output,
 
-    pub fn deinit(self: *Output) void {
+    /// Should be used as the user-facing destructor.  This is intentionally not named deinit,
+    /// because this ensures that this output object will only be destroyed once the corresponding
+    /// window manager output is also destroyed.
+    pub fn unref(self: *Output) void {
+        if (self.wm_output) |wm| {
+            self.wm_output = null;
+
+            if (wm.wl_output == null) {
+                wm.destroy();
+                self.destroy();
+            }
+        } else {
+            self.destroy();
+        }
+    }
+
+    /// Actually destroys the struct.  Make sure you've understood what unref does, first.
+    pub fn destroy(self: *Output) void {
         self.wl.release();
         if (self.outp_name) |name| self.alloc.free(name);
         if (self.wm_output) |wm| wm.wl_output = null;
