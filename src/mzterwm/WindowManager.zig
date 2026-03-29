@@ -30,7 +30,8 @@ window_pool: std.heap.MemoryPool(Window),
 keys: KeyManager,
 
 /// Index into `outputs` for the currently selected output.  This always has to be in bounds.
-selected_output: usize = 0,
+selected_output: usize,
+selected_output_dirty: bool,
 
 /// The currently focused window.  Will be sent to river the next manage sequence iff
 /// focused_window_dirty.
@@ -158,6 +159,7 @@ pub const Output = struct {
 
                         if (self.wm.selected_output > i) {
                             self.wm.selected_output -|= 1;
+                            self.wm.selected_output_dirty = false;
                         }
 
                         if (old.tag_space) |*ts| {
@@ -499,6 +501,8 @@ pub fn init(globals: *Globals, ipc: *IPCHandler, config: Config) WindowManager {
         .windows = .{},
         .window_pool = .init(globals.alloc),
         .keys = .init(globals),
+        .selected_output = 0,
+        .selected_output_dirty = false,
         .focused_window = null,
         .focused_window_dirty = false,
         .tag_keys = undefined, // initialized during setup
@@ -830,6 +834,14 @@ fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
 
 fn performManage(self: *WindowManager) !void {
     defer self.globals.rwm.manageFinish();
+
+    if (self.selected_output_dirty) {
+        if (self.selectedOutput()) |outp| {
+            outp.layer.setDefault();
+        }
+
+        self.selected_output_dirty = false;
+    }
 
     if (self.focused_window_dirty) {
         if (self.focused_window) |win| {

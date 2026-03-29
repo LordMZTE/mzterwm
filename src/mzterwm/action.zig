@@ -32,10 +32,13 @@ pub const Action = union(enum) {
                 try ts.commitFocus();
             },
             .FocusOutput => |opt| {
+                if (wm.outputs.items.len < 2) return;
+
                 switch (opt.direction) {
                     .next => mzterwm.rotFocusFwd(&wm.selected_output, wm.outputs.items.len),
                     .prev => mzterwm.rotFocusBck(&wm.selected_output, wm.outputs.items.len),
                 }
+                wm.selected_output_dirty = true;
 
                 if (wm.selectedOutput()) |out|
                     if (out.tag_space) |*ts| try ts.commitFocus();
@@ -125,7 +128,7 @@ pub const Action = union(enum) {
             },
             .Quit => {
                 wm.globals.rwm.exitSession();
-            }
+            },
         }
     }
 };
