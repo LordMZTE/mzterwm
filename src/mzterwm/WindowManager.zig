@@ -34,7 +34,7 @@ selected_output: usize,
 selected_output_dirty: bool,
 
 /// The currently focused window.  Will be sent to river the next manage sequence iff
-/// focused_window_dirty.
+/// focused_window_dirty.  Keep in mind that this is meaningless with a focus override in place.
 focused_window: ?*Window,
 focused_window_dirty: bool,
 
@@ -304,12 +304,6 @@ pub const Window = struct {
         self.wm.window_pool.destroy(self);
     }
 
-    pub fn focus(self: *Window) void {
-        for (self.wm.keys.seats.items) |seat| {
-            seat.river.focusWindow(self.river);
-        }
-    }
-
     pub fn fromListNode(node: *std.DoublyLinkedList.Node) *Window {
         return @alignCast(@fieldParentPtr("winlist_node", node));
     }
@@ -327,16 +321,9 @@ pub const Window = struct {
     }
 
     fn computeWantedBorderColor(self: *Window) !?@Vector(4, u8) {
-        const ts = self.tag_space orelse return null;
-        const active = self.wm.selectedOutput();
-
-        const ts_wins = try ts.getWindows();
-        const this_idx = std.mem.indexOfScalar(*Window, ts_wins, self);
-        if (active != null and active.?.tag_space != null and &active.?.tag_space.? == ts and
-            this_idx == ts.selected_window) return self.wm.config.borders.focus_color.vec;
-
+        const focus = self.wm.effectiveFocusedWindow();
+        if (focus == self) return self.wm.config.borders.focus_color.vec;
         if (self.render.want_fullscreen) return self.wm.config.borders.fullscreen_color.vec;
-
         return self.wm.config.borders.base_color.vec;
     }
 
@@ -744,6 +731,11 @@ pub fn moveWindowTo(self: *WindowManager, opts: struct {
     });
 }
 
+pub fn effectiveFocusedWindow(self: *WindowManager) ?*Window {
+    if (self.focus_override != .none) return null;
+    return self.focused_window;
+}
+
 fn rwmListener(
     _: *river.WindowManagerV1,
     ev: river.WindowManagerV1.Event,
@@ -876,7 +868,7 @@ fn performManage(self: *WindowManager) !void {
         self.selected_output_dirty = false;
     }
 
-    if (self.focused_window_dirty) {
+    if (self.focused_window_dirty and self.focus_override == .none) {
         if (self.focused_window) |win| {
             for (self.keys.seats.items) |seat| {
                 seat.river.focusWindow(win.river);
@@ -886,8 +878,8 @@ fn performManage(self: *WindowManager) !void {
                 seat.river.clearFocus();
             }
         }
-        self.focused_window_dirty = false;
     }
+    self.focused_window_dirty = false;
 
     // loop over all windows, setting initial properties
     var maybe_node = self.windows.first;
@@ -1048,6 +1040,9 @@ pub fn onFocusOverrideChanged(self: *WindowManager) void {
         const ts = &(outp.tag_space orelse continue);
         ts.windows_valid = false;
     }
+
+    if (self.focus_override == .none)
+        self.focused_window_dirty = true;
 }
 
 /// Checks if the currently focused layout is changed and, if so, updates the layout state
