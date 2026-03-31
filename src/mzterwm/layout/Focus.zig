@@ -105,7 +105,7 @@ fn onUserKey(_: *river.XkbBindingV1, ev: river.XkbBindingV1.Event, keydat: *KeyD
         },
         .SetDirection => |opt| {
             self.direction = opt.to;
-        }
+        },
     }
 }
 
