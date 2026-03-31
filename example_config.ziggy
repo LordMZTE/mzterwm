@@ -1,6 +1,13 @@
 // This is an example configuration file for mzterwm, using the Ziggy language.
 // All values here are equal to their defaults unless otherwise noted.
 
+// Optional cursor theme configuration.  You probably don't have the cursor theme used in this
+// example on your system; use whatever you like.
+.cursor = {
+    .theme = "LyraX-cursors",
+    .size = 24,
+},
+
 // Configuration for keys that are used to switch tags.
 // Tags work similar to tags in river-classic, but the keyboard configuration is fancier.
 //

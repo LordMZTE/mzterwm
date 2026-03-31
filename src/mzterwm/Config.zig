@@ -13,6 +13,11 @@ const TagSpace = @import("TagSpace.zig");
 
 const river = wayland.client.river;
 
+cursor: ?struct {
+    theme: []const u8,
+    size: u32,
+} = null,
+
 tag_keys: struct {
     mods: Modifiers = .{ .meta = true },
     keys: []const Keysym = &.{

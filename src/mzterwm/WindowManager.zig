@@ -66,6 +66,8 @@ layout_global: struct {
 },
 prev_active_layout: layout.LayoutKind,
 
+child_env: std.process.EnvMap,
+
 pub const Output = struct {
     wm: *WindowManager,
     river: *river.OutputV1,
@@ -480,7 +482,22 @@ const UserKeyData = struct {
 
 const WindowManager = @This();
 
-pub fn init(globals: *Globals, ipc: *IPCHandler, config: Config) WindowManager {
+pub fn init(globals: *Globals, ipc: *IPCHandler, config: Config) !WindowManager {
+    var child_env = try std.process.getEnvMap(globals.alloc);
+
+    if (config.cursor) |cursor| {
+        try child_env.put("XCURSOR_THEME", cursor.theme);
+
+        { // cursor size
+            const k_dup = try globals.alloc.dupe(u8, "XCURSOR_SIZE");
+            errdefer globals.alloc.free(k_dup);
+            const val = try std.fmt.allocPrint(globals.alloc, "{}", .{cursor.size});
+            errdefer globals.alloc.free(val);
+
+            try child_env.putMove(k_dup, val);
+        }
+    }
+
     return .{
         .globals = globals,
         .ipc = ipc,
@@ -501,6 +518,7 @@ pub fn init(globals: *Globals, ipc: *IPCHandler, config: Config) WindowManager {
         .focus_override = .none,
         .layout_global = undefined, // initialized during setup
         .prev_active_layout = .focus,
+        .child_env = child_env,
     };
 }
 
@@ -852,6 +870,16 @@ fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
                         river_seat.id.focusWindow(space_wins[ts.selected_window].river);
                     }
                 }
+            }
+
+            // If we have a cursor theme configured, set that for the seat.
+            if (self.config.cursor) |cursor| {
+                var buf: [512]u8 = undefined;
+                if (cursor.theme.len > buf.len - 1) @panic("Cursor theme name is too long.");
+                @memcpy(buf[0..cursor.theme.len], cursor.theme);
+                buf[cursor.theme.len] = 0;
+
+                seat.river.setXcursorTheme(@ptrCast(&buf), cursor.size);
             }
         },
     }

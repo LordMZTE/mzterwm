@@ -90,7 +90,7 @@ pub fn main() !u8 {
     var globals: *mzterwm.Globals = try .setupListenerAndCollect(alloc, reg, dpy);
     defer globals.deinit();
 
-    var wm: mzterwm.WindowManager = .init(globals, &ipc, config);
+    var wm: mzterwm.WindowManager = try .init(globals, &ipc, config);
     defer wm.deinit();
     try wm.setup();
 

@@ -148,7 +148,11 @@ pub const Action = union(enum) {
                 wm.notifyTagsChangedOn(outp);
             },
             .Spawn => |opt| {
-                const t = try std.Thread.spawn(.{}, spawnAndWaitChild, .{ wm.globals.alloc, opt.argv });
+                const t = try std.Thread.spawn(.{}, spawnAndWaitChild, .{
+                    wm.globals.alloc,
+                    opt.argv,
+                    &wm.child_env,
+                });
                 t.detach();
             },
             .Quit => {
@@ -158,13 +162,18 @@ pub const Action = union(enum) {
     }
 };
 
-fn spawnAndWaitChild(alloc: std.mem.Allocator, argv: []const []const u8) void {
+fn spawnAndWaitChild(
+    alloc: std.mem.Allocator,
+    argv: []const []const u8,
+    env: *const std.process.EnvMap,
+) void {
     if (argv.len == 0) {
         std.log.err("can't spawn child with empty argv", .{});
         return;
     }
 
     var child: std.process.Child = .init(argv, alloc);
+    child.env_map = env;
     const term = child.spawnAndWait() catch |e| {
         std.log.warn("failed to spawn child process `{s}`: {}", .{ argv[0], e });
         return;
