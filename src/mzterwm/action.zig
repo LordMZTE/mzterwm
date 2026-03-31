@@ -10,6 +10,7 @@ pub const Action = union(enum) {
     FocusOutput: struct { direction: FocusDirection },
     MoveWindow: struct { direction: FocusDirection },
     MoveWindowOutput: struct { direction: FocusDirection },
+    SwapTop: struct {},
     CloseWindow: struct {},
     ToggleWindowFullscreen: struct {},
     SetWindowTags: struct { to: TagSpace.Mask },
@@ -85,6 +86,27 @@ pub const Action = union(enum) {
                     .win = win,
                     .to = other_outp,
                 });
+            },
+            .SwapTop => {
+                const ts = &((wm.selectedOutput() orelse return).tag_space orelse return);
+                const wins = try ts.getWindows();
+                if (wins.len < 2) return;
+
+                if (ts.selected_window == 0) {
+                    // If the topmost window is selected, swap it with the one below it.
+                    wm.windows.remove(&wins[1].winlist_node);
+                    wm.windows.insertBefore(&wins[0].winlist_node, &wins[1].winlist_node);
+                } else if (ts.selected_window < wins.len) {
+                    // Otherwise, move the currently focused window to the top and focus that.
+                    wm.windows.remove(&wins[ts.selected_window].winlist_node);
+                    wm.windows.insertBefore(
+                        &wins[0].winlist_node,
+                        &wins[ts.selected_window].winlist_node,
+                    );
+                    ts.selected_window = 0;
+                }
+                ts.windows_valid = false;
+                try ts.commitFocus();
             },
             .CloseWindow => {
                 const outp = wm.selectedOutput() orelse return;

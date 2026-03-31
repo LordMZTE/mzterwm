@@ -47,6 +47,7 @@
     { .key = "comma", .mods = { .alt = true }, .action = FocusOutput { .direction = "prev" } },
     { .key = "period", .mods = { .alt = true , .shift = true}, .action = MoveWindowOutput { .direction = "next" } },
     { .key = "comma", .mods = { .alt = true, .shift = true }, .action = MoveWindowOutput { .direction = "prev" } },
+    { .key = "Return", .mods = { .alt = true, .shift = true }, .action = SwapTop {} },
     { .key = "q", .mods = { .alt = true, .shift = true }, .action = CloseWindow {} },
     { .key = "e", .mods = { .alt = true, .shift = true }, .action = Quit {} },
     { .key = "f", .mods = { .alt = true }, .action = ToggleWindowFullscreen {} },
