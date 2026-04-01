@@ -31,6 +31,9 @@ pub const Event = union(enum) {
     /// Tags have been changed
     tag_change: TagChange,
 
+    /// The title of the focused window on the given output changed.
+    title_change: TitleChange,
+
     /// A response to certain requests.  See request documentation for details.
     action_result: struct {
         serial: Serial,
@@ -51,4 +54,12 @@ pub const TagChange = struct {
 
     /// A mask of tags on this output that contains those tags that have a window on them.
     occupied: proto.TagMask,
+};
+
+pub const TitleChange = struct {
+    /// The name of the output the title change occured on
+    output: []const u8,
+
+    /// New title of the focused window
+    title: []const u8,
 };

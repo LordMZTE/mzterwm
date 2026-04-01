@@ -63,6 +63,8 @@ pub const Action = union(enum) {
                     .prev => wm.windows.insertBefore(&other_win.winlist_node, &this_win.winlist_node),
                 }
 
+                // No need to call onSelectedWindowChanged, because we moved the window as well as
+                // changing selected_window.
                 ts.selected_window = other_idx;
                 ts.windows_valid = false;
             },
@@ -96,6 +98,7 @@ pub const Action = union(enum) {
                     // If the topmost window is selected, swap it with the one below it.
                     wm.windows.remove(&wins[1].winlist_node);
                     wm.windows.insertBefore(&wins[0].winlist_node, &wins[1].winlist_node);
+                    try ts.onSelectedWindowChanged();
                 } else if (ts.selected_window < wins.len) {
                     // Otherwise, move the currently focused window to the top and focus that.
                     wm.windows.remove(&wins[ts.selected_window].winlist_node);
@@ -104,6 +107,7 @@ pub const Action = union(enum) {
                         &wins[ts.selected_window].winlist_node,
                     );
                     ts.selected_window = 0;
+                    try ts.onSelectedWindowChanged();
                 }
                 ts.windows_valid = false;
                 try ts.commitFocus();

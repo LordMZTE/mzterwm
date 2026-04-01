@@ -109,16 +109,21 @@ pub const Output = struct {
         self.wm.globals.alloc.destroy(self);
     }
 
+    pub fn name(self: *Output) ?[]const u8 {
+        const wl = self.wl_output orelse return null;
+        return wl.outp_name;
+    }
+
     /// This should be called after the `name` field has been set, which happens either when we get
     /// a `wl_output` event here for an output we already know the name of, or later when we get the
     /// name of that output in case we don't have it yet.
     pub fn onNameKnown(self: *Output) void {
         std.debug.assert(self.wl_output != null and self.wl_output.?.outp_name != null);
         std.debug.assert(self.tag_space == null);
-        const name = self.wl_output.?.outp_name.?;
+        const n = self.wl_output.?.outp_name.?;
 
-        if (self.wm.expunged_spaces.fetchRemove(name)) |kv| {
-            std.log.info("recovered expunged tag space for {s}", .{name});
+        if (self.wm.expunged_spaces.fetchRemove(n)) |kv| {
+            std.log.info("recovered expunged tag space for {s}", .{n});
             self.tag_space = kv.value;
             self.wm.globals.alloc.free(kv.key);
         } else self.tag_space = .init(self.wm);
@@ -134,7 +139,7 @@ pub const Output = struct {
             win.tag_space == null or
                 // window wants to be on this output
                 (win.wanted_output != null and
-                    std.mem.eql(u8, win.wanted_output.?, name)))
+                    std.mem.eql(u8, win.wanted_output.?, n)))
             {
                 self.wm.moveWindowTo(.{
                     .win = win,
@@ -251,6 +256,7 @@ pub const Window = struct {
     tag_space: ?*TagSpace,
     mask: TagSpace.Mask,
     size: [2]u31,
+    title: std.ArrayList(u8),
 
     /// If set, this window has an output it desires to be on which isn't necessarily the one it is
     /// currently on.
@@ -344,6 +350,7 @@ pub const Window = struct {
                         } else if (ts.selected_window > this_idx) {
                             ts.selected_window -= 1;
                         }
+                        ts.onSelectedWindowChanged() catch @panic("OOM");
                         ts.commitFocus() catch @panic("OOM");
                     }
 
@@ -371,7 +378,24 @@ pub const Window = struct {
                 };
             },
             .app_id => {}, // TODO: appid-based rules or something?
-            .title => {},
+            .title => |t| {
+                self.title.clearRetainingCapacity();
+                if (t.title) |title| {
+                    self.title.appendSlice(self.wm.globals.alloc, std.mem.span(title)) catch
+                        @panic("OOM");
+                }
+
+                notify: {
+                    const ts = self.tag_space orelse break :notify;
+                    const outp = self.wm.findOutputForTagSpace(ts) orelse break :notify;
+                    const name = outp.name() orelse break :notify;
+
+                    self.wm.ipc.emitEventToAll(.{ .title_change = .{
+                        .output = name,
+                        .title = self.title.items,
+                    } });
+                }
+            },
             .parent => {},
             .decoration_hint => {},
             .pointer_move_requested => {},
@@ -668,15 +692,16 @@ pub fn unfocus(self: *WindowManager) void {
 pub fn notifyTagsChangedOn(self: *WindowManager, outp: *Output) void {
     const ts = &(outp.tag_space orelse return);
     ts.windows_valid = false;
-    if (outp.wl_output) |wl| {
-        if (wl.outp_name) |name| {
-            self.ipc.emitEventToAll(.{ .tag_change = .{
-                .mask = ts.mask,
-                .primary = ts.primary,
-                .output = name,
-                .occupied = ts.computeOccupiedTags(),
-            } });
-        }
+    if (outp.name()) |name| {
+        self.ipc.emitEventToAll(.{ .tag_change = .{
+            .mask = ts.mask,
+            .primary = ts.primary,
+            .output = name,
+            .occupied = ts.computeOccupiedTags(),
+        } });
+
+        const title = if (ts.focusedWindow() catch @panic("OOM")) |win| win.title.items else "";
+        self.ipc.emitEventToAll(.{ .title_change = .{ .title = title, .output = name } });
     }
 
     const cur_outp = self.selectedOutput();
@@ -799,6 +824,7 @@ fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
                     .border_color = self.config.borders.focus_color.vec,
                     .dirty = .{ .border = self.config.borders.width != 0 },
                 },
+                .title = .empty,
                 .wanted_output = outp: {
                     const sel = sel_outp orelse break :outp null;
                     const wl = sel.wl_output orelse break :outp null;
@@ -1063,12 +1089,6 @@ fn performRender(self: *WindowManager) !void {
 
 /// Called when the focus_override is updated
 pub fn onFocusOverrideChanged(self: *WindowManager) void {
-    // Invalidate the windows of all tag spaces so the decorations are updated accordingly
-    for (self.outputs.items) |outp| {
-        const ts = &(outp.tag_space orelse continue);
-        ts.windows_valid = false;
-    }
-
     if (self.focus_override == .none)
         self.focused_window_dirty = true;
 }
@@ -1089,4 +1109,12 @@ pub fn updateActiveLayout(self: *WindowManager) void {
         }
         self.prev_active_layout = new_layout;
     }
+}
+
+pub fn findOutputForTagSpace(self: *WindowManager, ts: *TagSpace) ?*Output {
+    for (self.outputs.items) |outp| {
+        const outp_ts = &(outp.tag_space orelse continue);
+        if (outp_ts == ts) return outp;
+    }
+    return null;
 }

@@ -82,8 +82,7 @@ pub fn evacuateTo(self: *TagSpace, other: ?*TagSpace) !void {
     self.windows_valid = false;
 }
 
-/// Gets or computes the list of window indices in this TagSpace.  May also update window state for
-/// stuff like border color.
+/// Gets or computes the list of window indices in this TagSpace.
 pub fn getWindows(self: *TagSpace) std.mem.Allocator.Error![]*WindowManager.Window {
     if (self.windows_valid) return self.windows.items;
 
@@ -105,6 +104,14 @@ pub fn getWindows(self: *TagSpace) std.mem.Allocator.Error![]*WindowManager.Wind
 /// Tells River to actually focus the currently selected window.  Unfocuses any focused window if
 /// there is no selected window.
 pub fn commitFocus(self: *TagSpace) std.mem.Allocator.Error!void {
+    switch (self.wm.focus_override) {
+        .none => {},
+        .exclusive => return,
+        .non_exclusive => {
+            self.wm.focus_override = .none;
+            self.wm.onFocusOverrideChanged();
+        },
+    }
     if (self.wm.focus_override != .none) return;
 
     const wins = try self.getWindows();
@@ -131,14 +138,15 @@ pub fn maybeUpdateFocus(self: *TagSpace, comptime rotFn: fn (*usize, usize) void
             rotFn(&self.selected_window, wins.len);
             self.windows_valid = false;
             try self.commitFocus();
+            try self.onSelectedWindowChanged();
         },
         .non_exclusive => {
             const wins = try self.getWindows();
             rotFn(&self.selected_window, wins.len);
             self.wm.focus_override = .none;
             self.wm.onFocusOverrideChanged();
-            // no need to invalidate windows, onFocusOverrideChanged will already have done that
             try self.commitFocus();
+            try self.onSelectedWindowChanged();
         },
         .exclusive => {},
     }
@@ -153,4 +161,27 @@ pub fn computeOccupiedTags(self: *TagSpace) Mask {
         occupied |= win.mask;
     }
     return occupied;
+}
+
+pub fn focusedWindow(self: *TagSpace) std.mem.Allocator.Error!?*WindowManager.Window {
+    const wins = try self.getWindows();
+    if (self.selected_window >= wins.len) return null;
+    return wins[self.selected_window];
+}
+
+/// Should be called when the window that is selected within this tag space changes.
+/// Possible causes:
+/// - selected_window was updated without the windows moving accordingly
+/// - the tag mask was changed
+/// - the focused window was closed, or a new window was added at the current focused index.
+pub fn onSelectedWindowChanged(self: *TagSpace) std.mem.Allocator.Error!void {
+    const output = self.wm.findOutputForTagSpace(self) orelse return;
+    const name = output.name() orelse return;
+
+    const maybe_focus_win = try self.focusedWindow();
+
+    self.wm.ipc.emitEventToAll(.{ .title_change = .{
+        .title = if (maybe_focus_win) |focus| focus.title.items else "",
+        .output = name,
+    } });
 }
