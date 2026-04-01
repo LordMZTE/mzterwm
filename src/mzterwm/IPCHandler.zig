@@ -194,6 +194,11 @@ fn sendInitialStateTo(self: *IPCHandler, con: *Connection) !void {
             .mask = ts.mask,
             .occupied = ts.computeOccupiedTags(),
         } });
+
+        try proto.writePkt(&writer.interface, proto.pkt.Event{ .title_change = .{
+            .output = name,
+            .title = if (try ts.focusedWindow()) |win| win.title.items else "",
+        } });
     }
 
     try writer.interface.flush();
