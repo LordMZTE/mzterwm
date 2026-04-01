@@ -509,6 +509,11 @@ const WindowManager = @This();
 pub fn init(globals: *Globals, ipc: *IPCHandler, config: Config) !WindowManager {
     var child_env = try std.process.getEnvMap(globals.alloc);
 
+    // In debug builds, we don't propagate WAYLAND_DEBUG to children to avoid cluttering log output.
+    if (@import("builtin").mode == .Debug) {
+        child_env.remove("WAYLAND_DEBUG");
+    }
+
     if (config.cursor) |cursor| {
         try child_env.put("XCURSOR_THEME", cursor.theme);
 
