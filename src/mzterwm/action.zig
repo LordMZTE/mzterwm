@@ -29,7 +29,7 @@ pub const Action = union(enum) {
                     .prev => try ts.maybeUpdateFocus(mzterwm.rotFocusBck),
                 }
 
-                ts.windows_valid = false;
+                ts.visible_windows_valid = false;
                 try ts.commitFocus();
             },
             .FocusOutput => |opt| {
@@ -46,7 +46,7 @@ pub const Action = union(enum) {
             },
             .MoveWindow => |opt| {
                 const ts = &((wm.selectedOutput() orelse return).tag_space orelse return);
-                const wins = try ts.getWindows();
+                const wins = try ts.getVisibleWindows();
                 if (ts.selected_window >= wins.len or wins.len < 2) return;
 
                 var other_idx = ts.selected_window;
@@ -66,14 +66,14 @@ pub const Action = union(enum) {
                 // No need to call onSelectedWindowChanged, because we moved the window as well as
                 // changing selected_window.
                 ts.selected_window = other_idx;
-                ts.windows_valid = false;
+                ts.visible_windows_valid = false;
             },
             .MoveWindowOutput => |opt| {
                 if (wm.outputs.items.len < 2) return;
                 const cur_outp = wm.selectedOutput() orelse return;
                 const cur_ts = &(cur_outp.tag_space orelse return);
 
-                const wins = try cur_ts.getWindows();
+                const wins = try cur_ts.getVisibleWindows();
                 if (cur_ts.selected_window >= wins.len) return;
                 const win = wins[cur_ts.selected_window];
 
@@ -91,7 +91,7 @@ pub const Action = union(enum) {
             },
             .SwapTop => {
                 const ts = &((wm.selectedOutput() orelse return).tag_space orelse return);
-                const wins = try ts.getWindows();
+                const wins = try ts.getVisibleWindows();
                 if (wins.len < 2) return;
 
                 if (ts.selected_window == 0) {
@@ -109,13 +109,13 @@ pub const Action = union(enum) {
                     ts.selected_window = 0;
                     try ts.onSelectedWindowChanged();
                 }
-                ts.windows_valid = false;
+                ts.visible_windows_valid = false;
                 try ts.commitFocus();
             },
             .CloseWindow => {
                 const outp = wm.selectedOutput() orelse return;
                 const ts = &(outp.tag_space orelse return);
-                const wins = try ts.getWindows();
+                const wins = try ts.getVisibleWindows();
                 if (ts.selected_window >= wins.len) return;
 
                 const cur_win = wins[ts.selected_window];
@@ -128,7 +128,7 @@ pub const Action = union(enum) {
             .ToggleWindowFullscreen => {
                 const outp = wm.selectedOutput() orelse return;
                 const ts = &(outp.tag_space orelse return);
-                const wins = try ts.getWindows();
+                const wins = try ts.getVisibleWindows();
                 if (ts.selected_window >= wins.len) return;
 
                 const cur_win = wins[ts.selected_window];
@@ -139,7 +139,7 @@ pub const Action = union(enum) {
             inline .SetWindowTags, .AddWindowTags => |opt, tag| {
                 const outp = wm.selectedOutput() orelse return;
                 const ts = &(outp.tag_space orelse return);
-                const wins = try ts.getWindows();
+                const wins = try ts.getVisibleWindows();
                 if (ts.selected_window >= wins.len) return;
 
                 const cur_win = wins[ts.selected_window];
@@ -148,7 +148,7 @@ pub const Action = union(enum) {
                 } else {
                     cur_win.mask |= opt.tags;
                 }
-                ts.windows_valid = false;
+                ts.visible_windows_valid = false;
                 wm.notifyTagsChangedOn(outp);
             },
             .Spawn => |opt| {

@@ -175,9 +175,12 @@ pub const Output = struct {
                             ts.evacuateTo(
                                 // Move windows to other remaining outputs or limbo if there are no outputs
                                 // left.
-                                if (self.wm.selectedOutput()) |outp| if (outp.tag_space) |*ts_| ts_ else null else null,
+                                if (self.wm.selectedOutput()) |outp|
+                                    if (outp.tag_space) |*ts_| ts_ else null
+                                else
+                                    null,
                             ) catch @panic("OOM");
-                            ts.windows_valid = false;
+                            ts.visible_windows_valid = false;
 
                             if (old.wl_output != null and old.wl_output.?.outp_name != null) {
                                 const key = self.wm.globals.alloc.dupe(
@@ -341,15 +344,15 @@ pub const Window = struct {
                 // Invalidate the tag space windows, and, if the removed window is before the
                 // focused one, shift over the selection by one so it stays on the same window.
                 if (self.tag_space) |ts| {
-                    const ts_wins = ts.getWindows() catch @panic("OOM");
+                    const ts_wins = ts.getVisibleWindows() catch @panic("OOM");
                     self.wm.windows.remove(&self.winlist_node);
-                    ts.windows_valid = false;
                     if (std.mem.indexOfScalar(*Window, ts_wins, self)) |this_idx| {
                         if (ts_wins.len > 1 and ts.selected_window >= ts_wins.len - 1) {
                             ts.selected_window = ts_wins.len - 2;
                         } else if (ts.selected_window > this_idx) {
                             ts.selected_window -= 1;
                         }
+                        ts.visible_windows_valid = false;
                         ts.onSelectedWindowChanged() catch @panic("OOM");
                         ts.commitFocus() catch @panic("OOM");
                     }
@@ -464,14 +467,14 @@ pub const Seat = struct {
                     return;
                 };
 
-                const space_wins = space.getWindows() catch @panic("OOM");
+                const space_wins = space.getVisibleWindows() catch @panic("OOM");
                 const id_in_space = std.mem.indexOfScalar(*Window, space_wins, win) orelse
                     // This being reached would mean the window's tag_space field is set, but that
                     // space doesn't contain the window.  That's invalid state.
                     unreachable;
 
                 space.selected_window = id_in_space;
-                space.windows_valid = false;
+                space.visible_windows_valid = false;
                 space.commitFocus() catch @panic("OOM");
             },
             .shell_surface_interaction => {},
@@ -697,7 +700,7 @@ pub fn unfocus(self: *WindowManager) void {
 /// occupied tags.
 pub fn notifyTagsChangedOn(self: *WindowManager, outp: *Output) void {
     const ts = &(outp.tag_space orelse return);
-    ts.windows_valid = false;
+    ts.visible_windows_valid = false;
     if (outp.name()) |name| {
         self.ipc.emitEventToAll(.{ .tag_change = .{
             .mask = ts.mask,
@@ -853,7 +856,7 @@ fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
                 // the new window has just been prepended, this results in the new window being
                 // focused.
                 ts.selected_window = 0;
-                ts.windows_valid = false;
+                ts.visible_windows_valid = false;
                 try ts.commitFocus();
             }
 
@@ -897,9 +900,8 @@ fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
             // focus it.
             if (self.selectedOutput()) |outp| {
                 if (outp.tag_space) |*ts| {
-                    const space_wins = try ts.getWindows();
-                    if (ts.selected_window < space_wins.len) {
-                        river_seat.id.focusWindow(space_wins[ts.selected_window].river);
+                    if (try ts.focusedWindow()) |win| {
+                        river_seat.id.focusWindow(win.river);
                     }
                 }
             }
@@ -966,7 +968,7 @@ fn performManage(self: *WindowManager) !void {
 
     for (self.outputs.items) |outp| {
         const ts = &(outp.tag_space orelse continue);
-        const windows = try ts.getWindows();
+        const windows = try ts.getVisibleWindows();
 
         // Try to find a window to fullscreen.
         const fullscreen_win = if (windows.len == 1 and
@@ -1064,7 +1066,7 @@ fn performRender(self: *WindowManager) !void {
     // update properties of windows in each tagspace
     for (self.outputs.items) |outp| {
         const ts = &(outp.tag_space orelse continue);
-        for (try ts.getWindows()) |win| {
+        for (try ts.getVisibleWindows()) |win| {
             if (win.render.dirty.pos) {
                 win.node.setPosition(win.render.region.pos[0], win.render.region.pos[1]);
                 win.render.dirty.pos = false;

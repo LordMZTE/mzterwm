@@ -24,11 +24,13 @@ primary: TagIdx,
 /// Per-tag data.  This is typically indexed by the primary tag.
 tagdata: [bitwidth]TagData,
 
-/// Windows in this TagSpace.  This is a sublist of indices into wm.windows.
-/// This should only be considered meaningful if windows_valid is true.  Otherwise, it must be
+/// Visible windows in this TagSpace.  This is a sublist of wm.windows.
+/// This should only be considered meaningful if visible_windows_valid is true.  Otherwise, it must be
 /// recomputed.
-windows: std.ArrayList(*WindowManager.Window),
-windows_valid: bool,
+/// If you want to use this, you should consider calling getVisibleWindows instead, which will
+/// lazily recompute the list if needed.
+visible_windows: std.ArrayList(*WindowManager.Window),
+visible_windows_valid: bool,
 
 /// Index of the window that is currently selected in windows.
 /// It's allowed for this to be out-of-bounds, in which case no window is selected.
@@ -56,8 +58,8 @@ pub fn init(wm: *WindowManager) TagSpace {
         .mask = 1,
         .primary = 0,
         .tagdata = @splat(.init),
-        .windows = .empty,
-        .windows_valid = false,
+        .visible_windows = .empty,
+        .visible_windows_valid = false,
         .selected_window = 0,
     };
 }
@@ -66,27 +68,41 @@ pub fn deinit(self: *TagSpace) void {
     for (&self.tagdata) |*dat| {
         dat.deinit();
     }
-    self.windows.deinit(self.wm.globals.alloc);
+    self.visible_windows.deinit(self.wm.globals.alloc);
 }
 
 pub fn evacuateTo(self: *TagSpace, other: ?*TagSpace) !void {
-    for (try self.getWindows()) |win| {
+    var maybe_node = self.wm.windows.first;
+    while (maybe_node) |node| : (maybe_node = node.next) {
+        const win: *WindowManager.Window = .fromListNode(node);
+        if (win.tag_space != self) continue;
+
         if (win.render.is_fullscreen) {
             // River unfullscreens windows on output disconnect.
             win.render.dirty.is_fullscreen = true;
         }
 
         win.tag_space = other;
+
+        if (win.render.is_fullscreen) {
+            // Need to make another fullscreen request to update output
+            win.render.dirty.is_fullscreen = true;
+        }
     }
-    if (other) |o| o.windows_valid = false;
-    self.windows_valid = false;
+    if (other) |o| {
+        o.visible_windows_valid = false;
+        if (self.wm.findOutputForTagSpace(o)) |outp| {
+            self.wm.notifyTagsChangedOn(outp);
+        }
+    }
+    self.visible_windows_valid = false;
 }
 
-/// Gets or computes the list of window indices in this TagSpace.
-pub fn getWindows(self: *TagSpace) std.mem.Allocator.Error![]*WindowManager.Window {
-    if (self.windows_valid) return self.windows.items;
+/// Gets or computes the list of currentl visible windows in this TagSpace.
+pub fn getVisibleWindows(self: *TagSpace) std.mem.Allocator.Error![]*WindowManager.Window {
+    if (self.visible_windows_valid) return self.visible_windows.items;
 
-    self.windows.clearRetainingCapacity();
+    self.visible_windows.clearRetainingCapacity();
 
     var maybe_node = self.wm.windows.first;
     while (maybe_node) |node| : (maybe_node = node.next) {
@@ -94,11 +110,11 @@ pub fn getWindows(self: *TagSpace) std.mem.Allocator.Error![]*WindowManager.Wind
 
         if (win.tag_space != self or win.mask & self.mask == 0) continue;
 
-        try self.windows.append(self.wm.globals.alloc, win);
+        try self.visible_windows.append(self.wm.globals.alloc, win);
     }
 
-    self.windows_valid = true;
-    return self.windows.items;
+    self.visible_windows_valid = true;
+    return self.visible_windows.items;
 }
 
 /// Tells River to actually focus the currently selected window.  Unfocuses any focused window if
@@ -114,7 +130,7 @@ pub fn commitFocus(self: *TagSpace) std.mem.Allocator.Error!void {
     }
     if (self.wm.focus_override != .none) return;
 
-    const wins = try self.getWindows();
+    const wins = try self.getVisibleWindows();
     self.wm.focused_window = find_win: {
         if (wins.len == 1 and wins[0].render.want_fullscreen) break :find_win wins[0];
 
@@ -134,14 +150,14 @@ pub fn commitFocus(self: *TagSpace) std.mem.Allocator.Error!void {
 pub fn maybeUpdateFocus(self: *TagSpace, comptime rotFn: fn (*usize, usize) void) !void {
     switch (self.wm.focus_override) {
         .none => {
-            const wins = try self.getWindows();
+            const wins = try self.getVisibleWindows();
             rotFn(&self.selected_window, wins.len);
-            self.windows_valid = false;
+            self.visible_windows_valid = false;
             try self.commitFocus();
             try self.onSelectedWindowChanged();
         },
         .non_exclusive => {
-            const wins = try self.getWindows();
+            const wins = try self.getVisibleWindows();
             rotFn(&self.selected_window, wins.len);
             self.wm.focus_override = .none;
             self.wm.onFocusOverrideChanged();
@@ -164,7 +180,7 @@ pub fn computeOccupiedTags(self: *TagSpace) Mask {
 }
 
 pub fn focusedWindow(self: *TagSpace) std.mem.Allocator.Error!?*WindowManager.Window {
-    const wins = try self.getWindows();
+    const wins = try self.getVisibleWindows();
     if (self.selected_window >= wins.len) return null;
     return wins[self.selected_window];
 }
