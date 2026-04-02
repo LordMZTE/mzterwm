@@ -311,6 +311,7 @@ pub const Window = struct {
     pub fn deinit(self: *Window) void {
         self.node.destroy();
         self.river.destroy();
+        self.title.deinit(self.wm.globals.alloc);
         if (self.wanted_output) |name| self.wm.globals.alloc.free(name);
         self.wm.window_pool.destroy(self);
     }
