@@ -676,6 +676,7 @@ pub fn deinit(self: *WindowManager) void {
         ent.value_ptr.deinit();
     }
     self.expunged_spaces.deinit(self.globals.alloc);
+    self.child_env.deinit();
 }
 
 pub fn selectedOutput(self: *WindowManager) ?*Output {
