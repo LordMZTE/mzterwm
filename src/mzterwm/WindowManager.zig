@@ -762,13 +762,8 @@ pub fn moveWindowTo(self: *WindowManager, opts: struct {
     }
 
     if (prev) |ts| {
-        for (self.outputs.items) |outp| {
-            if (outp.tag_space != null and &outp.tag_space.? == ts) {
-                self.notifyTagsChangedOn(outp);
-                break;
-            }
-        } else {
-            @panic("Window has tag space that doesn't belong to any output!");
+        if (self.findOutputForTagSpace(ts)) |outp| {
+            self.notifyTagsChangedOn(outp);
         }
     }
 
