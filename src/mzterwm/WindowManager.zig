@@ -355,7 +355,16 @@ pub const Window = struct {
                         }
                         ts.visible_windows_valid = false;
                         ts.onSelectedWindowChanged() catch @panic("OOM");
-                        ts.commitFocus() catch @panic("OOM");
+
+                        const is_active = is_active: {
+                            const sel_outp = self.wm.selectedOutput() orelse
+                                break :is_active false;
+                            const sel_ts = &(sel_outp.tag_space orelse break :is_active false);
+                            break :is_active sel_ts == ts;
+                        };
+
+                        if (is_active)
+                            ts.commitFocus() catch @panic("OOM");
                     }
 
                     for (self.wm.outputs.items) |outp| {
