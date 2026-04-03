@@ -20,4 +20,12 @@ jobs:
       - name: Build & Test
         run: |
           zig fmt --check .
-          zig build test
+          zig build test --summary all
+          zig build install --summary all
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with: 
+          name: out-debug-${{ env.RUNNER_ARCH }}
+          path: |
+            zig-out/*
