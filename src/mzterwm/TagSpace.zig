@@ -128,8 +128,48 @@ pub fn commitFocus(self: *TagSpace) std.mem.Allocator.Error!void {
             self.wm.onFocusOverrideChanged();
         },
     }
+
+    if (self.wm.focus_override != .none) return;
+    for (self.wm.outputs.items, 0..) |other_outp, i| {
+        if (other_outp.tag_space != null and &other_outp.tag_space.? == self) {
+            if (self.wm.selected_output != i) {
+                self.wm.selected_output = i;
+                self.wm.selected_output_dirty = true;
+            }
+
+            break;
+        }
+    } else {
+        std.log.err("Attempt to commitFocus for {*} doesn't belong to any output.", .{self});
+        return;
+    }
+
+    try self.commitFocusInner();
+}
+
+/// Like `commitFocus`, but more efficient if this TagSpace's output is already selected.
+/// Caller asserts that the current output is this tag space's output.
+pub fn commitFocusCurrentOutput(self: *TagSpace) std.mem.Allocator.Error!void {
+    if (@import("builtin").mode == .Debug) {
+        const this_outp = self.wm.findOutputForTagSpace(self);
+        const cur_outp = self.wm.selectedOutput();
+        std.debug.assert(this_outp == cur_outp);
+    }
+
+    switch (self.wm.focus_override) {
+        .none => {},
+        .exclusive => return,
+        .non_exclusive => {
+            self.wm.focus_override = .none;
+            self.wm.onFocusOverrideChanged();
+        },
+    }
     if (self.wm.focus_override != .none) return;
 
+    try self.commitFocusInner();
+}
+
+fn commitFocusInner(self: *TagSpace) std.mem.Allocator.Error!void {
     const wins = try self.getVisibleWindows();
     self.wm.focused_window = find_win: {
         if (wins.len == 1 and wins[0].render.want_fullscreen) break :find_win wins[0];
@@ -153,7 +193,7 @@ pub fn maybeUpdateFocus(self: *TagSpace, comptime rotFn: fn (*usize, usize) void
             const wins = try self.getVisibleWindows();
             rotFn(&self.selected_window, wins.len);
             self.visible_windows_valid = false;
-            try self.commitFocus();
+            try self.commitFocusCurrentOutput();
             try self.onSelectedWindowChanged();
         },
         .non_exclusive => {
@@ -161,7 +201,7 @@ pub fn maybeUpdateFocus(self: *TagSpace, comptime rotFn: fn (*usize, usize) void
             rotFn(&self.selected_window, wins.len);
             self.wm.focus_override = .none;
             self.wm.onFocusOverrideChanged();
-            try self.commitFocus();
+            try self.commitFocusCurrentOutput();
             try self.onSelectedWindowChanged();
         },
         .exclusive => {},

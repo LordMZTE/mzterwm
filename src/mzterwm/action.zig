@@ -30,7 +30,7 @@ pub const Action = union(enum) {
                 }
 
                 ts.visible_windows_valid = false;
-                try ts.commitFocus();
+                try ts.commitFocusCurrentOutput();
             },
             .FocusOutput => |opt| {
                 if (wm.outputs.items.len < 2) return;
@@ -42,7 +42,7 @@ pub const Action = union(enum) {
                 wm.selected_output_dirty = true;
 
                 if (wm.selectedOutput()) |out|
-                    if (out.tag_space) |*ts| try ts.commitFocus();
+                    if (out.tag_space) |*ts| try ts.commitFocusCurrentOutput();
             },
             .MoveWindow => |opt| {
                 const ts = &((wm.selectedOutput() orelse return).tag_space orelse return);
@@ -110,7 +110,7 @@ pub const Action = union(enum) {
                     try ts.onSelectedWindowChanged();
                 }
                 ts.visible_windows_valid = false;
-                try ts.commitFocus();
+                try ts.commitFocusCurrentOutput();
             },
             .CloseWindow => {
                 const outp = wm.selectedOutput() orelse return;

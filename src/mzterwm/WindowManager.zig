@@ -364,7 +364,7 @@ pub const Window = struct {
                         };
 
                         if (is_active)
-                            ts.commitFocus() catch @panic("OOM");
+                            ts.commitFocusCurrentOutput() catch @panic("OOM");
                     }
 
                     for (self.wm.outputs.items) |outp| {
@@ -465,7 +465,7 @@ pub const Seat = struct {
                     if (w.river == rwin) break w;
                 } else {
                     std.log.err(
-                        "Got window interaction event for window taht isn't registered.",
+                        "Got window interaction event for window that isn't registered.",
                         .{},
                     );
                     return;
@@ -723,11 +723,6 @@ pub fn notifyTagsChangedOn(self: *WindowManager, outp: *Output) void {
         self.ipc.emitEventToAll(.{ .title_change = .{ .title = title, .output = name } });
     }
 
-    const cur_outp = self.selectedOutput();
-    if (cur_outp == outp) {
-        ts.commitFocus() catch @panic("OOM");
-    }
-
     std.log.debug(
         "tags switched; primary: {}, mask: {b}",
         .{ ts.primary, ts.mask },
@@ -862,7 +857,7 @@ fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
                 // focused.
                 ts.selected_window = 0;
                 ts.visible_windows_valid = false;
-                try ts.commitFocus();
+                try ts.commitFocusCurrentOutput();
             }
 
             if (sel_outp) |outp| {
