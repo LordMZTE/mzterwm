@@ -449,6 +449,10 @@ pub const Seat = struct {
         self.wm.globals.alloc.destroy(self);
     }
 
+    pub fn warpPointer(self: Seat, to: @Vector(2, i32)) void {
+        self.river.pointerWarp(to[0], to[1]);
+    }
+
     fn listener(_: *river.SeatV1, ev: river.SeatV1.Event, self: *Seat) void {
         switch (ev) {
             .removed => {
@@ -925,13 +929,20 @@ fn performManage(self: *WindowManager) !void {
     if (self.selected_output_dirty) {
         if (self.selectedOutput()) |outp| {
             outp.layer.setDefault();
+            if (self.config.pointer_warp == .output) {
+                self.keys.warpPointer(outp.region.center());
+            }
         }
 
         self.selected_output_dirty = false;
     }
 
+    // If we want to warp the pointer to the current window, set a flag instead of doing it now,
+    // since we haven't performed layout yet, so the current window position is meaningless.
+    var do_window_pointer_warp = false;
     if (self.focused_window_dirty and self.focus_override == .none) {
         if (self.focused_window) |win| {
+            do_window_pointer_warp = self.config.pointer_warp == .window;
             for (self.keys.seats.items) |seat| {
                 seat.river.focusWindow(win.river);
             }
@@ -1039,6 +1050,12 @@ fn performManage(self: *WindowManager) !void {
                 win.river.close();
                 win.should_close = false;
             }
+        }
+    }
+
+    if (do_window_pointer_warp) {
+        if (self.focused_window) |win| {
+            self.keys.warpPointer(win.render.region.center());
         }
     }
 }

@@ -8,6 +8,11 @@
     .size = 24,
 },
 
+// Optional pointer warp configuration.
+// Can be none, output, or window to warp the pointer to the focused output's center when that
+// changes, or to the center of the focused window on change.
+.pointer_warp = "none",
+
 // Configuration for keys that are used to switch tags.
 // Tags work similar to tags in river-classic, but the keyboard configuration is fancier.
 //

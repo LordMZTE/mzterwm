@@ -154,3 +154,9 @@ pub fn seatRemoved(self: *KeyManager, old: *WindowManager.Seat) void {
         }
     }
 }
+
+pub fn warpPointer(self: *KeyManager, to: @Vector(2, i32)) void {
+    for (self.seats.items) |seat| {
+        seat.warpPointer(to);
+    }
+}

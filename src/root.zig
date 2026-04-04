@@ -206,6 +206,15 @@ pub const Region = struct {
             .size = self.size -| size_vec * @as(@Vector(2, u31), @splat(2)),
         };
     }
+
+    pub fn center(self: Region) @Vector(2, i32) {
+        return self.pos + (self.size / @as(@Vector(2, u31), @splat(2)));
+    }
+
+    test "center" {
+        const region: Region = .{ .pos = .{ 10, 10 }, .size = .{ 10, 10 } };
+        try std.testing.expectEqual(@as(@Vector(2, i32), @splat(15)), region.center());
+    }
 };
 
 /// An 8-bit fixed-point ratio.
@@ -282,4 +291,5 @@ pub fn rotFocusBckCheckWrap(focus: *usize, n: usize) bool {
 
 test {
     _ = Ratio;
+    _ = Region;
 }

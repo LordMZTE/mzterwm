@@ -18,6 +18,17 @@ cursor: ?struct {
     size: u32,
 } = null,
 
+pointer_warp: enum {
+    /// Never warp the pointer
+    none,
+
+    /// When the focused output changes, warp the pointer to the center of the output
+    output,
+
+    /// When the focused Window changes, warp the pointer to the center of the window.
+    window,
+} = .none,
+
 tag_keys: struct {
     mods: Modifiers = .{ .meta = true },
     keys: []const Keysym = &.{
