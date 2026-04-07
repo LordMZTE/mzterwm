@@ -184,7 +184,8 @@ fn commitFocusInner(self: *TagSpace) std.mem.Allocator.Error!void {
 
     if (new_focus != self.wm.focused_window) {
         self.wm.focused_window = new_focus;
-        self.wm.focused_window_dirty = true;
+        if (self.wm.focused_window_dirty == .no)
+            self.wm.focused_window_dirty = .yes;
         self.wm.updateActiveLayout();
     }
 }

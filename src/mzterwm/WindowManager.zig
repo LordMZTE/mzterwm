@@ -36,7 +36,14 @@ selected_output_dirty: bool,
 /// The currently focused window.  Will be sent to river the next manage sequence iff
 /// focused_window_dirty.  Keep in mind that this is meaningless with a focus override in place.
 focused_window: ?*Window,
-focused_window_dirty: bool,
+focused_window_dirty: enum {
+    /// not dirty
+    no,
+    /// dirty
+    yes,
+    /// dirty, but don't warp pointer even if that's configured.  Used when the mouse is used to change focus.
+    no_warp,
+},
 
 /// A slice containing each workspace key.
 tag_keys: []TagKeyData,
@@ -490,6 +497,8 @@ pub const Seat = struct {
                 space.selected_window = id_in_space;
                 space.visible_windows_valid = false;
                 space.commitFocus() catch @panic("OOM");
+                if (self.wm.focused_window_dirty != .no)
+                    self.wm.focused_window_dirty = .no_warp;
             },
             .shell_surface_interaction => {},
             .op_delta => {},
@@ -556,7 +565,7 @@ pub fn init(globals: *Globals, ipc: *IPCHandler, config: Config) !WindowManager 
         .selected_output = 0,
         .selected_output_dirty = false,
         .focused_window = null,
-        .focused_window_dirty = false,
+        .focused_window_dirty = .no,
         .tag_keys = undefined, // initialized during setup
         .tag_keys_down = 0,
         .global_user_keys = undefined, // initialized during setup
@@ -705,7 +714,8 @@ pub fn selectedOutput(self: *WindowManager) ?*Output {
 
 /// Tell River to clear the focus.
 pub fn unfocus(self: *WindowManager) void {
-    self.focused_window_dirty |= self.focused_window != null;
+    if (self.focused_window_dirty == .no and self.focused_window != null)
+        self.focused_window_dirty = .yes;
     self.focused_window = null;
 }
 
@@ -940,9 +950,10 @@ fn performManage(self: *WindowManager) !void {
     // If we want to warp the pointer to the current window, set a flag instead of doing it now,
     // since we haven't performed layout yet, so the current window position is meaningless.
     var do_window_pointer_warp = false;
-    if (self.focused_window_dirty and self.focus_override == .none) {
+    if (self.focused_window_dirty != .no and self.focus_override == .none) {
         if (self.focused_window) |win| {
-            do_window_pointer_warp = self.config.pointer_warp == .window;
+            do_window_pointer_warp = self.config.pointer_warp == .window and
+                self.focused_window_dirty != .no_warp;
             for (self.keys.seats.items) |seat| {
                 seat.river.focusWindow(win.river);
             }
@@ -952,7 +963,7 @@ fn performManage(self: *WindowManager) !void {
             }
         }
     }
-    self.focused_window_dirty = false;
+    self.focused_window_dirty = .no;
 
     // loop over all windows, setting initial properties
     var maybe_node = self.windows.first;
@@ -1115,7 +1126,7 @@ fn performRender(self: *WindowManager) !void {
 /// Called when the focus_override is updated
 pub fn onFocusOverrideChanged(self: *WindowManager) void {
     if (self.focus_override == .none)
-        self.focused_window_dirty = true;
+        self.focused_window_dirty = .yes;
 }
 
 /// Checks if the currently focused layout is changed and, if so, updates the layout state
