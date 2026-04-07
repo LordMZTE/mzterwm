@@ -4,7 +4,7 @@ A window manager for [River](https://isaacfreund.com/software/river/) that aims 
 river-classic tag model, where all windows can be in many "workspaces" (tags) at once and we can
 also view multiple of them at once.
 
-## TODO
+## Features
 
 - [x] Focus layout (rivertile-like)
 - [x] Gaps
@@ -16,6 +16,7 @@ also view multiple of them at once.
 - [x] Layer shell WM
 - [x] Focusing Windows
 - [x] Fullscreen Windows
+- [x] Pointer Warp
 - [ ] ~Multi-Seat~
     - mzterwm currently contains an untested and half-assed attempt at not exploding with multiple
       seats. Stuff like each seat having it's own focused window and such is entirely unimplemented
