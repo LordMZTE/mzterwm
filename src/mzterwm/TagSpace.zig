@@ -171,7 +171,7 @@ pub fn commitFocusCurrentOutput(self: *TagSpace) std.mem.Allocator.Error!void {
 
 fn commitFocusInner(self: *TagSpace) std.mem.Allocator.Error!void {
     const wins = try self.getVisibleWindows();
-    self.wm.focused_window = find_win: {
+    const new_focus = find_win: {
         if (wins.len == 1 and wins[0].render.want_fullscreen) break :find_win wins[0];
 
         if (self.selected_window >= wins.len) {
@@ -182,9 +182,11 @@ fn commitFocusInner(self: *TagSpace) std.mem.Allocator.Error!void {
         break :find_win wins[self.selected_window];
     };
 
-    self.wm.focused_window_dirty = true;
-
-    self.wm.updateActiveLayout();
+    if (new_focus != self.wm.focused_window) {
+        self.wm.focused_window = new_focus;
+        self.wm.focused_window_dirty = true;
+        self.wm.updateActiveLayout();
+    }
 }
 
 pub fn maybeUpdateFocus(self: *TagSpace, comptime rotFn: fn (*usize, usize) void) !void {
