@@ -737,6 +737,10 @@ pub fn notifyTagsChangedOn(self: *WindowManager, outp: *Output) void {
         self.ipc.emitEventToAll(.{ .title_change = .{ .title = title, .output = name } });
     }
 
+    if (self.selectedOutput() == outp) {
+        ts.commitFocusCurrentOutput() catch @panic("OOM");
+    }
+
     std.log.debug(
         "tags switched; primary: {}, mask: {b}",
         .{ ts.primary, ts.mask },
