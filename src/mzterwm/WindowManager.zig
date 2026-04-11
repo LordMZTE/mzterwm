@@ -482,6 +482,8 @@ pub const Seat = struct {
                     return;
                 };
 
+                if (win == self.wm.focused_window) return;
+
                 const space = win.tag_space orelse {
                     std.log.err("Got window interaction event for window that's in limbo.  " ++
                         "How'd you even get your pointer there?", .{});
@@ -497,8 +499,8 @@ pub const Seat = struct {
                 space.selected_window = id_in_space;
                 space.visible_windows_valid = false;
                 space.commitFocus() catch @panic("OOM");
-                if (self.wm.focused_window_dirty != .no)
-                    self.wm.focused_window_dirty = .no_warp;
+                space.onSelectedWindowChanged() catch @panic("OOM");
+                self.wm.focused_window_dirty = .no_warp;
             },
             .shell_surface_interaction => {},
             .op_delta => {},
