@@ -407,6 +407,10 @@ pub const Window = struct {
 
                 notify: {
                     const ts = self.tag_space orelse break :notify;
+                    const vis_wins = ts.getVisibleWindows() catch @panic("OOM");
+                    if (ts.selected_window >= vis_wins.len or vis_wins[ts.selected_window] != self)
+                        // Window isn't selected, don't update title.
+                        break :notify;
                     const outp = self.wm.findOutputForTagSpace(ts) orelse break :notify;
                     const name = outp.name() orelse break :notify;
 
