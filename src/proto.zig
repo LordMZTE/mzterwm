@@ -6,7 +6,7 @@ pub const Client = @import("proto/Client.zig");
 
 /// The current protocol version.  When a client connects, this must match.
 pub const ProtocolVersion = u32;
-pub const version: ProtocolVersion = 3;
+pub const version: ProtocolVersion = 4;
 
 pub const tag_bitwidth = 32;
 pub const TagMask = std.meta.Int(.unsigned, tag_bitwidth);
@@ -22,12 +22,12 @@ pub const freePkt = s2s.free;
 
 /// Gets the path where the IPC socket of mzterwm is considering the current environment.
 /// Return value is allocated with the given allocator.
-pub fn findSocketPath(alloc: std.mem.Allocator) ![]u8 {
-    const rtd = std.posix.getenv("XDG_RUNTIME_DIR") orelse {
+pub fn findSocketPath(env: *const std.process.Environ.Map, alloc: std.mem.Allocator) ![]u8 {
+    const rtd = env.get("XDG_RUNTIME_DIR") orelse {
         std.log.err("Couldn't get socket path because XDG_RUNTIME_DIR isn't set.", .{});
         return error.MissingEnv;
     };
-    const wl_dpy = std.posix.getenv("WAYLAND_DISPLAY") orelse {
+    const wl_dpy = env.get("WAYLAND_DISPLAY") orelse {
         std.log.err("Couldn't get socket path because WAYLAND_DISPLAY isn't set.", .{});
         return error.MissingEnv;
     };

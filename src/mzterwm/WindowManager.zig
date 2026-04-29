@@ -73,7 +73,13 @@ layout_global: struct {
 },
 prev_active_layout: layout.LayoutKind,
 
-child_env: std.process.EnvMap,
+child_env: *const std.process.Environ.Map,
+
+/// A group to be used for long-running tasks that aren't ever waited on, such as child processes
+/// spawned by actions.
+///
+/// You must not call `async` on this, as those jobs may not run until cleanup.
+longgrp: std.Io.Group,
 
 pub const Output = struct {
     wm: *WindowManager,
@@ -538,16 +544,19 @@ const UserKeyData = struct {
 
 const WindowManager = @This();
 
-pub fn init(globals: *Globals, ipc: *IPCHandler, config: Config) !WindowManager {
-    var child_env = try std.process.getEnvMap(globals.alloc);
-
+pub fn init(
+    globals: *Globals,
+    ipc: *IPCHandler,
+    config: Config,
+    env: *std.process.Environ.Map,
+) !WindowManager {
     // In debug builds, we don't propagate WAYLAND_DEBUG to children to avoid cluttering log output.
     if (@import("builtin").mode == .Debug) {
-        child_env.remove("WAYLAND_DEBUG");
+        _ = env.swapRemove("WAYLAND_DEBUG");
     }
 
     if (config.cursor) |cursor| {
-        try child_env.put("XCURSOR_THEME", cursor.theme);
+        try env.put("XCURSOR_THEME", cursor.theme);
 
         { // cursor size
             const k_dup = try globals.alloc.dupe(u8, "XCURSOR_SIZE");
@@ -555,7 +564,7 @@ pub fn init(globals: *Globals, ipc: *IPCHandler, config: Config) !WindowManager 
             const val = try std.fmt.allocPrint(globals.alloc, "{}", .{cursor.size});
             errdefer globals.alloc.free(val);
 
-            try child_env.putMove(k_dup, val);
+            try env.putMove(k_dup, val);
         }
     }
 
@@ -566,7 +575,7 @@ pub fn init(globals: *Globals, ipc: *IPCHandler, config: Config) !WindowManager 
         .run_state = .keep_running,
         .outputs = .empty,
         .windows = .{},
-        .window_pool = .init(globals.alloc),
+        .window_pool = .empty,
         .keys = .init(globals),
         .selected_output = 0,
         .selected_output_dirty = false,
@@ -579,13 +588,14 @@ pub fn init(globals: *Globals, ipc: *IPCHandler, config: Config) !WindowManager 
         .focus_override = .none,
         .layout_global = undefined, // initialized during setup
         .prev_active_layout = .focus,
-        .child_env = child_env,
+        .child_env = env,
+        .longgrp = .init,
     };
 }
 
 /// Register listeners for window management.
 pub fn setup(self: *WindowManager) !void {
-    try self.window_pool.preheat(32);
+    try self.window_pool.addCapacity(self.globals.alloc, 32);
     self.globals.rwm.setListener(*WindowManager, rwmListener, self);
 
     self.tag_keys = try self.globals.alloc.alloc(TagKeyData, self.config.tag_keys.keys.len);
@@ -695,7 +705,7 @@ pub fn deinit(self: *WindowManager) void {
         const win: *Window = .fromListNode(node);
         win.deinit();
     }
-    self.window_pool.deinit();
+    self.window_pool.deinit(self.globals.alloc);
     self.keys.deinit();
 
     // FIXME: this is invalid if setup hasn't been called
@@ -708,7 +718,8 @@ pub fn deinit(self: *WindowManager) void {
         ent.value_ptr.deinit();
     }
     self.expunged_spaces.deinit(self.globals.alloc);
-    self.child_env.deinit();
+
+    self.longgrp.cancel(self.globals.io);
 }
 
 pub fn selectedOutput(self: *WindowManager) ?*Output {
@@ -824,6 +835,7 @@ fn rwmListener(
 }
 
 fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
+    const alloc = self.globals.alloc;
     switch (ev) {
         .unavailable => {
             std.log.err("Window management unavailable.  Is another window manager running?", .{});
@@ -838,7 +850,7 @@ fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
         .session_locked => {},
         .session_unlocked => {},
         .window => |win| {
-            const window = try self.window_pool.create();
+            const window = try self.window_pool.create(alloc);
             errdefer self.window_pool.destroy(window);
 
             const sel_outp = self.selectedOutput();
@@ -862,7 +874,7 @@ fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
                     const sel = sel_outp orelse break :outp null;
                     const wl = sel.wl_output orelse break :outp null;
                     const name = wl.outp_name orelse break :outp null;
-                    break :outp try self.globals.alloc.dupe(u8, name);
+                    break :outp try alloc.dupe(u8, name);
                 },
                 .should_close = false,
             };
@@ -889,8 +901,8 @@ fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
             }
         },
         .output => |outp| {
-            const output = try self.globals.alloc.create(Output);
-            errdefer self.globals.alloc.destroy(output);
+            const output = try alloc.create(Output);
+            errdefer alloc.destroy(output);
 
             output.* = .{
                 .wm = self,
@@ -904,11 +916,11 @@ fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
 
             outp.id.setListener(*Output, Output.listener, output);
             output.layer.setListener(*Output, Output.layerListener, output);
-            try self.outputs.append(self.globals.alloc, output);
+            try self.outputs.append(alloc, output);
         },
         .seat => |river_seat| {
-            const seat = try self.globals.alloc.create(Seat);
-            errdefer self.globals.alloc.destroy(seat);
+            const seat = try alloc.create(Seat);
+            errdefer alloc.destroy(seat);
 
             seat.* = .{
                 .wm = self,

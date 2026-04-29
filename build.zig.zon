@@ -6,27 +6,27 @@
 
     .dependencies = .{
         .wayland = .{
-            .url = "git+https://codeberg.org/ifreund/zig-wayland.git#f8ff8c7a7952ac5c45b34e7204d8f0cec03ffe6e",
-            .hash = "wayland-0.5.0-dev-lQa1kkXaAQDqOmm7eaFE88QrMTMtvag2B6jMC13yyai3",
+            .url = "git+https://codeberg.org/ifreund/zig-wayland.git#3c6da94905ac1b27fe7792709e1b05cc55052d5a",
+            .hash = "wayland-0.6.0-lQa1kqz8AQADQmdNJsNhLoNHcnEGEUjrOaPV-dtEnEmX",
+        },
+        .s2s = .{
+            .url = "git+https://github.com/ziglibs/s2s.git?ref=master#eeccd16e60ef9fd7fbb9a3b1b82e88f74f7631f0",
+            .hash = "s2s-0.0.1-qt8ajYV8AAB9m_WoCGu-BRH1ghuvFbK_BuMfhXYJ0mCg",
         },
         .ziggy = .{
-            .url = "git+https://github.com/kristoff-it/ziggy.git#83fe52030a1a6b7c6d1ddf9740f46068566ae5cd",
-            .hash = "ziggy-0.1.0-kTg8v5pABgDztlefWHceH-Sh8tVveguFC61QkmLkIRaA",
+            .url = "git+https://github.com/kristoff-it/ziggy.git?ref=main#6760f0f4c4fc1ae01428bc6d87109e32124eeeb7",
+            .hash = "ziggy-0.1.0-kTg8v1ZWBgDLi7Y-AtdRRzqEvmYJiOq4I9r4mB2wLaKQ",
             .lazy = true,
         },
         .xkbcommon = .{
-            .url = "git+https://codeberg.org/ifreund/zig-xkbcommon?ref=main#a10651157cb1545ee3ae3818b4c7437c64d16462",
-            .hash = "xkbcommon-0.4.0-dev-VDqIe3bUAQB9reSurmSJxQjiQ6bnpekmOxIp_077GhVZ",
+            .url = "git+https://codeberg.org/ifreund/zig-xkbcommon.git?ref=main#6c2f41e269adde0d2cd58d20c02c4f8803d83eb1",
+            .hash = "xkbcommon-0.5.0-dev-VDqIe0y2AgA1RzA2ICMdGhaAgSXdhtRTbYybQQu7WfOa",
             .lazy = true,
         },
         .args = .{
-            .url = "git+https://github.com/ikskuh/zig-args?ref=master#e060ac80c244e9675471b6d213b22ddc83cc8f98",
-            .hash = "args-0.0.0-CiLiqo_RAADz2TiHUzG5-0Mk7IZHR-h1SZgUrb_k4c7d",
+            .url = "git+https://github.com/ikskuh/zig-args.git?ref=master#d47ae21768f9ec47c2a4154ab48b87166965b820",
+            .hash = "args-0.0.0-CiLiqmvgAADyJmrzcQTP9IOYNvTzR_KGrg3ZNNsH2Qv0",
             .lazy = true,
-        },
-        .s2s = .{
-            .url = "git+https://github.com/ziglibs/s2s?ref=master#eeccd16e60ef9fd7fbb9a3b1b82e88f74f7631f0",
-            .hash = "s2s-0.0.1-qt8ajYV8AAB9m_WoCGu-BRH1ghuvFbK_BuMfhXYJ0mCg",
         },
     },
 

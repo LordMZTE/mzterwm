@@ -61,14 +61,13 @@ pub const KeyData = struct {
     action: Action,
 };
 
-// These are PascalCase so the Ziggy config looks nice
 pub const Action = union(enum) {
-    ResizePrimary: struct { by: i9 },
+    resize_primary: i9,
 
     /// Like ResizePrimary, but inverted iff the primary direction is down or right
-    ResizePrimaryDirectional: struct { by: i9 },
+    resize_primary_directional: i9,
 
-    SetDirection: struct { to: mzterwm.Cardinal },
+    set_direction: mzterwm.Cardinal,
 };
 
 pub const Config = struct {
@@ -88,13 +87,13 @@ fn onUserKey(_: *river.XkbBindingV1, ev: river.XkbBindingV1.Event, keydat: *KeyD
     const self = &ts.tagdata[ts.primary].layout.focus;
 
     switch (keydat.action) {
-        .ResizePrimary => |opt| {
-            var new_size = self.primary_ratio.val + opt.by;
+        .resize_primary => |by| {
+            var new_size = self.primary_ratio.val + by;
             new_size = std.math.clamp(new_size, 16, 255 - 16);
             self.primary_ratio.val = @intCast(new_size);
         },
-        .ResizePrimaryDirectional => |opt| {
-            var by = opt.by;
+        .resize_primary_directional => |by_| {
+            var by = by_;
             switch (self.direction) {
                 .down, .right => by *= -1,
                 .up, .left => {},
@@ -103,8 +102,8 @@ fn onUserKey(_: *river.XkbBindingV1, ev: river.XkbBindingV1.Event, keydat: *KeyD
             new_size = std.math.clamp(new_size, 16, 255 - 16);
             self.primary_ratio.val = @intCast(new_size);
         },
-        .SetDirection => |opt| {
-            self.direction = opt.to;
+        .set_direction => |to| {
+            self.direction = to;
         },
     }
 }

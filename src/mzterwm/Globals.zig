@@ -8,6 +8,7 @@ const river = wayland.client.river;
 
 /// An allocator which is stored here so we can make allocations from the registry listener.
 alloc: std.mem.Allocator,
+io: std.Io,
 rwm: *river.WindowManagerV1,
 xkb_binds: *river.XkbBindingsV1,
 layer_shell: *river.LayerShellV1,
@@ -18,6 +19,7 @@ const Globals = @This();
 const PartialOrGlobals = union(enum) {
     partial: struct {
         alloc: std.mem.Allocator,
+        io: std.Io,
         rwm: ?*river.WindowManagerV1 = null,
         xkb_binds: ?*river.XkbBindingsV1 = null,
         layer_shell: ?*river.LayerShellV1 = null,
@@ -29,6 +31,7 @@ const PartialOrGlobals = union(enum) {
 /// Collects initial globals into the structure and then installs a long-lived registry handler.
 pub fn setupListenerAndCollect(
     alloc: std.mem.Allocator,
+    io: std.Io,
     reg: *wl.Registry,
     dpy: *wl.Display,
 ) !*Globals {
@@ -36,7 +39,7 @@ pub fn setupListenerAndCollect(
     errdefer alloc.destroy(pog);
 
     pog.* = .{
-        .partial = .{ .alloc = alloc },
+        .partial = .{ .alloc = alloc, .io = io },
     };
 
     const self: Globals = initial: {
@@ -53,6 +56,7 @@ pub fn setupListenerAndCollect(
         try mzterwm.roundtrip(dpy);
         break :initial .{
             .alloc = alloc,
+            .io = io,
             .rwm = pog.partial.rwm orelse
                 return complainAboutMissingGlobal(river.WindowManagerV1),
             .xkb_binds = pog.partial.xkb_binds orelse

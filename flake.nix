@@ -21,7 +21,7 @@
         packages.mzterwm = mzterwm;
         devShells.default = pkgs.mkShell {
           buildInputs = mzterwm.buildInputs ++ (with pkgs; [
-            zig_0_15
+            zig_0_16
             pkg-config
           ]);
         };

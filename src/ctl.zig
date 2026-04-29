@@ -25,23 +25,19 @@ pub const Verb = union(enum) {
     @"set-tags": struct {},
 };
 
-pub fn main() !u8 {
-    var gpa = if (@import("builtin").mode == .Debug) std.heap.DebugAllocator(.{}).init else {};
-    const alloc = if (@TypeOf(gpa) == void) std.heap.smp_allocator else gpa.allocator();
-    defer if (@TypeOf(gpa) != void) {
-        _ = gpa.deinit();
-    };
+pub fn main(init: std.process.Init) !u8 {
+    const alloc = init.gpa;
 
     var stdio_buf: [512]u8 = undefined;
     const parse_res = args.parseWithVerbForCurrentProcess(
         Options,
         Verb,
-        alloc,
+        init,
         .print,
     ) catch |e| switch (e) {
         error.InvalidArguments => {
             // print help to stderr
-            var writer = std.fs.File.stderr().writer(&stdio_buf);
+            var writer = std.Io.File.stderr().writer(init.io, &stdio_buf);
             try printHelp(&writer.interface);
             try writer.interface.flush();
             return 1;
@@ -50,7 +46,7 @@ pub fn main() !u8 {
     };
     defer parse_res.deinit();
 
-    var stdout = std.fs.File.stdout().writer(&stdio_buf);
+    var stdout = std.Io.File.stdout().writer(init.io, &stdio_buf);
 
     if (parse_res.options.help) {
         try printHelp(&stdout.interface);
@@ -67,15 +63,16 @@ pub fn main() !u8 {
     var read_buf: [512]u8 = undefined;
     var write_buf: [512]u8 = undefined;
     var client = if (parse_res.options.socket) |sock| try proto.Client.connect(
+        init.io,
         sock,
         &read_buf,
         &write_buf,
     ) else con: {
-        const path = try proto.findSocketPath(alloc);
+        const path = try proto.findSocketPath(init.environ_map, alloc);
         defer alloc.free(path);
-        break :con try proto.Client.connect(path, &read_buf, &write_buf);
+        break :con try proto.Client.connect(init.io, path, &read_buf, &write_buf);
     };
-    defer client.deinit();
+    defer client.deinit(init.io);
 
     const srv_ver = try client.handshake();
     if (srv_ver != proto.version) {

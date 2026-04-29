@@ -4,6 +4,7 @@ const wayland = @import("wayland");
 const wl = wayland.client.wl;
 
 pub const action = @import("mzterwm/action.zig");
+pub const posix = @import("mzterwm/posix.zig");
 
 pub const Config = @import("mzterwm/Config.zig");
 pub const Globals = @import("mzterwm/Globals.zig");
@@ -23,8 +24,8 @@ pub fn roundtrip(dpy: *wl.Display) !void {
 
 /// Run the main loop.  This dispatches wayland events and socket requests.
 pub fn mainLoop(dpy: *wl.Display, wm: *WindowManager, ipc: *IPCHandler) !void {
-    const epfd = try std.posix.epoll_create1(0);
-    defer std.posix.close(epfd);
+    const epfd: posix.EPoll = try .init();
+    defer epfd.deinit();
 
     const sigset = sigs: {
         var sigs = std.posix.sigemptyset();
@@ -37,43 +38,20 @@ pub fn mainLoop(dpy: *wl.Display, wm: *WindowManager, ipc: *IPCHandler) !void {
     std.posix.sigprocmask(std.posix.SIG.BLOCK, &sigset, null);
 
     const sigfd = try std.posix.signalfd(-1, &sigset, 0);
-    defer std.posix.close(sigfd);
+    defer _ = std.posix.system.close(sigfd);
 
     const EPOLL = std.os.linux.EPOLL;
 
     const wlfd = dpy.getFd();
-    var add_ev: std.posix.system.epoll_event = .{
-        .events = EPOLL.IN | EPOLL.HUP | EPOLL.ERR,
-        .data = .{ .fd = wlfd },
-    };
-    try std.posix.epoll_ctl(
-        epfd,
-        EPOLL.CTL_ADD,
-        wlfd,
-        &add_ev,
-    );
-
-    add_ev.data.fd = sigfd;
-    try std.posix.epoll_ctl(
-        epfd,
-        EPOLL.CTL_ADD,
-        sigfd,
-        &add_ev,
-    );
-
-    add_ev.data.fd = ipc.srv.stream.handle;
-    try std.posix.epoll_ctl(
-        epfd,
-        EPOLL.CTL_ADD,
-        ipc.srv.stream.handle,
-        &add_ev,
-    );
+    try epfd.addFd(wlfd, EPOLL.IN | EPOLL.HUP | EPOLL.ERR);
+    try epfd.addFd(sigfd, EPOLL.IN | EPOLL.HUP | EPOLL.ERR);
+    try epfd.addFd(ipc.srv.socket.handle, EPOLL.IN | EPOLL.HUP | EPOLL.ERR);
 
     if (dpy.flush() != .SUCCESS) return error.WaylandIPCFail;
 
     var evbuf: [64]std.posix.system.epoll_event = undefined;
     while (true) {
-        const evs = evbuf[0..std.posix.epoll_wait(epfd, &evbuf, -1)];
+        const evs = try epfd.wait(&evbuf, -1);
 
         for (evs) |ev| {
             if (ev.data.fd == wlfd) {
@@ -89,7 +67,11 @@ pub fn mainLoop(dpy: *wl.Display, wm: *WindowManager, ipc: *IPCHandler) !void {
                     @sizeOf(std.os.linux.signalfd_siginfo));
                 std.log.info("Got signal {}, exiting", .{siginf.signo});
                 return;
-            } else if (ipc.onFdReadable(wm.globals.alloc, epfd, ev.data.fd, ev.events) catch |e| {
+            } else if (ipc.onFdReadable(
+                epfd,
+                ev.data.fd,
+                ev.events,
+            ) catch |e| {
                 std.log.err("In IPC handler: {}", .{e});
                 return e;
             }) {

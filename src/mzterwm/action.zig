@@ -5,26 +5,25 @@ const WindowManager = @import("WindowManager.zig");
 const TagSpace = @import("TagSpace.zig");
 
 pub const Action = union(enum) {
-    // These are in PascalCase for the Ziggy config to look nice.
-    FocusWindow: struct { direction: FocusDirection },
-    FocusOutput: struct { direction: FocusDirection },
-    MoveWindow: struct { direction: FocusDirection },
-    MoveWindowOutput: struct { direction: FocusDirection },
-    SwapTop: struct {},
-    CloseWindow: struct {},
-    ToggleWindowFullscreen: struct {},
-    SetWindowTags: struct { to: TagSpace.Mask },
-    AddWindowTags: struct { tags: TagSpace.Mask },
-    Spawn: struct { argv: []const []const u8 },
-    Quit: struct {},
+    focus_window: FocusDirection,
+    focus_output: FocusDirection,
+    move_window: FocusDirection,
+    move_window_output: FocusDirection,
+    swap_top,
+    close_window,
+    toggle_window_fullscreen,
+    set_window_tags: TagSpace.Mask,
+    add_window_tags: TagSpace.Mask,
+    spawn: []const []const u8,
+    quit,
 
     pub fn perform(self: Action, wm: *WindowManager) !void {
         switch (self) {
-            .FocusWindow => |opt| {
+            .focus_window => |direction| {
                 const output = wm.selectedOutput() orelse return;
                 const ts = &(output.tag_space orelse return);
 
-                switch (opt.direction) {
+                switch (direction) {
                     .next => try ts.maybeUpdateFocus(mzterwm.rotFocusFwd),
                     .prev => try ts.maybeUpdateFocus(mzterwm.rotFocusBck),
                 }
@@ -32,10 +31,10 @@ pub const Action = union(enum) {
                 ts.visible_windows_valid = false;
                 try ts.commitFocusCurrentOutput();
             },
-            .FocusOutput => |opt| {
+            .focus_output => |direction| {
                 if (wm.outputs.items.len < 2) return;
 
-                switch (opt.direction) {
+                switch (direction) {
                     .next => mzterwm.rotFocusFwd(&wm.selected_output, wm.outputs.items.len),
                     .prev => mzterwm.rotFocusBck(&wm.selected_output, wm.outputs.items.len),
                 }
@@ -44,13 +43,13 @@ pub const Action = union(enum) {
                 if (wm.selectedOutput()) |out|
                     if (out.tag_space) |*ts| try ts.commitFocusCurrentOutput();
             },
-            .MoveWindow => |opt| {
+            .move_window => |direction| {
                 const ts = &((wm.selectedOutput() orelse return).tag_space orelse return);
                 const wins = try ts.getVisibleWindows();
                 if (ts.selected_window >= wins.len or wins.len < 2) return;
 
                 var other_idx = ts.selected_window;
-                const wrap = switch (opt.direction) {
+                const wrap = switch (direction) {
                     .next => mzterwm.rotFocusFwdCheckWrap(&other_idx, wins.len),
                     .prev => mzterwm.rotFocusBckCheckWrap(&other_idx, wins.len),
                 };
@@ -58,7 +57,7 @@ pub const Action = union(enum) {
                 const this_win = wins[ts.selected_window];
                 const other_win = wins[other_idx];
                 wm.windows.remove(&this_win.winlist_node);
-                switch (if (wrap) opt.direction.opposite() else opt.direction) {
+                switch (if (wrap) direction.opposite() else direction) {
                     .next => wm.windows.insertAfter(&other_win.winlist_node, &this_win.winlist_node),
                     .prev => wm.windows.insertBefore(&other_win.winlist_node, &this_win.winlist_node),
                 }
@@ -68,7 +67,7 @@ pub const Action = union(enum) {
                 ts.selected_window = other_idx;
                 ts.visible_windows_valid = false;
             },
-            .MoveWindowOutput => |opt| {
+            .move_window_output => |direction| {
                 if (wm.outputs.items.len < 2) return;
                 const cur_outp = wm.selectedOutput() orelse return;
                 const cur_ts = &(cur_outp.tag_space orelse return);
@@ -78,7 +77,7 @@ pub const Action = union(enum) {
                 const win = wins[cur_ts.selected_window];
 
                 var other_idx = wm.selected_output;
-                switch (opt.direction) {
+                switch (direction) {
                     .next => mzterwm.rotFocusFwd(&other_idx, wm.outputs.items.len),
                     .prev => mzterwm.rotFocusBck(&other_idx, wm.outputs.items.len),
                 }
@@ -89,7 +88,7 @@ pub const Action = union(enum) {
                     .to = other_outp,
                 });
             },
-            .SwapTop => {
+            .swap_top => {
                 const ts = &((wm.selectedOutput() orelse return).tag_space orelse return);
                 const wins = try ts.getVisibleWindows();
                 if (wins.len < 2) return;
@@ -112,7 +111,7 @@ pub const Action = union(enum) {
                 ts.visible_windows_valid = false;
                 try ts.commitFocusCurrentOutput();
             },
-            .CloseWindow => {
+            .close_window => {
                 const outp = wm.selectedOutput() orelse return;
                 const ts = &(outp.tag_space orelse return);
                 const wins = try ts.getVisibleWindows();
@@ -125,7 +124,7 @@ pub const Action = union(enum) {
                 // TODO: consider this once we make actions triggerable via IPC.
                 cur_win.should_close = true;
             },
-            .ToggleWindowFullscreen => {
+            .toggle_window_fullscreen => {
                 const outp = wm.selectedOutput() orelse return;
                 const ts = &(outp.tag_space orelse return);
                 const wins = try ts.getVisibleWindows();
@@ -136,30 +135,29 @@ pub const Action = union(enum) {
                 cur_win.render.want_fullscreen = !cur_win.render.want_fullscreen;
                 cur_win.render.dirty.want_fullscreen = true;
             },
-            inline .SetWindowTags, .AddWindowTags => |opt, tag| {
+            inline .set_window_tags, .add_window_tags => |tags, tag| {
                 const outp = wm.selectedOutput() orelse return;
                 const ts = &(outp.tag_space orelse return);
                 const wins = try ts.getVisibleWindows();
                 if (ts.selected_window >= wins.len) return;
 
                 const cur_win = wins[ts.selected_window];
-                if (comptime tag == .SetWindowTags) {
-                    cur_win.mask = opt.to;
+                if (comptime tag == .set_window_tags) {
+                    cur_win.mask = tags;
                 } else {
-                    cur_win.mask |= opt.tags;
+                    cur_win.mask |= tags;
                 }
                 ts.visible_windows_valid = false;
                 wm.notifyTagsChangedOn(outp);
             },
-            .Spawn => |opt| {
-                const t = try std.Thread.spawn(.{}, spawnAndWaitChild, .{
-                    wm.globals.alloc,
-                    opt.argv,
-                    &wm.child_env,
-                });
-                t.detach();
+            .spawn => |argv| {
+                try wm.longgrp.concurrent(
+                    wm.globals.io,
+                    spawnAndWaitChild,
+                    .{ wm.globals.io, argv, wm.child_env },
+                );
             },
-            .Quit => {
+            .quit => {
                 wm.globals.rwm.exitSession();
             },
         }
@@ -167,22 +165,35 @@ pub const Action = union(enum) {
 };
 
 fn spawnAndWaitChild(
-    alloc: std.mem.Allocator,
+    io: std.Io,
     argv: []const []const u8,
-    env: *const std.process.EnvMap,
-) void {
+    env: *const std.process.Environ.Map,
+) std.Io.Cancelable!void {
     if (argv.len == 0) {
         std.log.err("can't spawn child with empty argv", .{});
         return;
     }
 
-    var child: std.process.Child = .init(argv, alloc);
-    child.env_map = env;
-    const term = child.spawnAndWait() catch |e| {
-        std.log.warn("failed to spawn child process `{s}`: {}", .{ argv[0], e });
-        return;
+    var child = std.process.spawn(io, .{
+        .argv = argv,
+        .environ_map = env,
+    }) catch |e| switch (e) {
+        error.Canceled => return error.Canceled,
+        else => {
+            std.log.warn("failed to spawn child process `{s}`: {}", .{ argv[0], e });
+            return;
+        },
     };
-    std.log.debug("child exited with {}", .{term});
+
+    const term = child.wait(io) catch |e| switch (e) {
+        error.Canceled => return error.Canceled,
+        else => {
+            std.log.warn("failed to wait for child process `{s}`: {}", .{ argv[0], e });
+            return;
+        },
+    };
+
+    std.log.debug("child `{s}` exited with {}", .{ argv[0], term });
 }
 
 pub const FocusDirection = enum {
