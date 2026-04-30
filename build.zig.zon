@@ -10,8 +10,8 @@
             .hash = "wayland-0.6.0-lQa1kqz8AQADQmdNJsNhLoNHcnEGEUjrOaPV-dtEnEmX",
         },
         .s2s = .{
-            .url = "git+https://github.com/ziglibs/s2s.git?ref=master#eeccd16e60ef9fd7fbb9a3b1b82e88f74f7631f0",
-            .hash = "s2s-0.0.1-qt8ajYV8AAB9m_WoCGu-BRH1ghuvFbK_BuMfhXYJ0mCg",
+            .url = "git+https://github.com/lordmzte/s2s.git?ref=pkg-hash-fix#1f51ad8f00b0cc7b1b5b344fed1baf5b156d4f76",
+            .hash = "s2s-0.0.1-qt8ajXF9AABu59Lb3VhU2fa84NnRRpLsds6qQUOwJcOx",
         },
         .ziggy = .{
             .url = "git+https://github.com/kristoff-it/ziggy.git?ref=main#6760f0f4c4fc1ae01428bc6d87109e32124eeeb7",
