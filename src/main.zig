@@ -22,18 +22,12 @@ const Options = struct {
     config: ?[]const u8 = null,
 };
 
-pub fn main() !u8 {
-    var gpa = if (@import("builtin").mode == .Debug) std.heap.DebugAllocator(.{}).init else {};
-    const alloc = if (@TypeOf(gpa) == void) std.heap.c_allocator else gpa.allocator();
-    defer if (@TypeOf(gpa) != void) {
-        _ = gpa.deinit();
-    };
-
+pub fn main(init: std.process.Init) !u8 {
     var stdio_buf: [512]u8 = undefined;
-    const parse_res = args.parseForCurrentProcess(Options, alloc, .print) catch |e| switch (e) {
+    const parse_res = args.parseForCurrentProcess(Options, init, .print) catch |e| switch (e) {
         error.InvalidArguments => {
             // print help to stderr
-            var writer = std.fs.File.stderr().writer(&stdio_buf);
+            var writer = std.Io.File.stderr().writer(init.io, &stdio_buf);
             try args.printHelp(Options, "mzterwm", &writer.interface);
             try writer.interface.flush();
             return 1;
@@ -43,7 +37,7 @@ pub fn main() !u8 {
     defer parse_res.deinit();
 
     if (parse_res.options.help) {
-        var writer = std.fs.File.stdout().writer(&stdio_buf);
+        var writer = std.Io.File.stdout().writer(init.io, &stdio_buf);
         try args.printHelp(Options, "mzterwm", &writer.interface);
         try writer.interface.flush();
         return 0;
@@ -54,13 +48,27 @@ pub fn main() !u8 {
         return 1;
     }
 
-    var config_arena: std.heap.ArenaAllocator = .init(alloc);
+    var config_arena: std.heap.ArenaAllocator = .init(init.gpa);
     defer config_arena.deinit();
 
+    const config_path = parse_res.options.config orelse try mzterwm.Config.discover(
+        init.gpa,
+        init.environ_map,
+    ) orelse {
+        std.log.err(
+            "could not determine path for config file because neither" ++
+                "--config nor XDG_CONFIG_HOME nor HOME were set!",
+            .{},
+        );
+        return error.MissingEnv;
+    };
+    defer if (parse_res.options.config == null) init.gpa.free(config_path);
+
     const config = mzterwm.Config.load(
-        alloc,
+        init.io,
+        init.gpa,
         config_arena.allocator(),
-        parse_res.options.config,
+        config_path,
     ) catch |e| {
         std.log.err("Could not load configuration file: {}", .{e});
         return 1;
@@ -73,24 +81,24 @@ pub fn main() !u8 {
     var dpy: *wl.Display = try .connect(null);
     defer dpy.disconnect();
 
-    const sockpath = try proto.findSocketPath(alloc);
+    const sockpath = try proto.findSocketPath(init.environ_map, init.gpa);
     defer {
-        std.fs.cwd().deleteFile(sockpath) catch |e| {
+        std.Io.Dir.cwd().deleteFile(init.io, sockpath) catch |e| {
             std.log.warn("Couldn't delete socket after shutdown: {}", .{e});
         };
-        alloc.free(sockpath);
+        init.gpa.free(sockpath);
     }
 
-    var ipc: mzterwm.IPCHandler = try .initOn(sockpath);
-    defer ipc.deinit(alloc);
+    var ipc: mzterwm.IPCHandler = try .initOn(init.io, sockpath);
+    defer ipc.deinit(init.gpa, init.io);
 
     const reg = try dpy.getRegistry();
     defer reg.destroy();
 
-    var globals: *mzterwm.Globals = try .setupListenerAndCollect(alloc, reg, dpy);
+    var globals: *mzterwm.Globals = try .setupListenerAndCollect(init.gpa, init.io, reg, dpy);
     defer globals.deinit();
 
-    var wm: mzterwm.WindowManager = try .init(globals, &ipc, config);
+    var wm: mzterwm.WindowManager = try .init(globals, &ipc, config, init.environ_map);
     defer wm.deinit();
     try wm.setup();
 

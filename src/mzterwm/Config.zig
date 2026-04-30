@@ -32,15 +32,15 @@ pointer_warp: enum {
 tag_keys: struct {
     mods: Modifiers = .{ .meta = true },
     keys: []const Keysym = &.{
-        .{ .xkb = @enumFromInt(xkbcommon.Keysym.@"1") },
-        .{ .xkb = @enumFromInt(xkbcommon.Keysym.@"2") },
-        .{ .xkb = @enumFromInt(xkbcommon.Keysym.@"3") },
-        .{ .xkb = @enumFromInt(xkbcommon.Keysym.@"4") },
-        .{ .xkb = @enumFromInt(xkbcommon.Keysym.@"5") },
-        .{ .xkb = @enumFromInt(xkbcommon.Keysym.@"6") },
-        .{ .xkb = @enumFromInt(xkbcommon.Keysym.@"7") },
-        .{ .xkb = @enumFromInt(xkbcommon.Keysym.@"8") },
-        .{ .xkb = @enumFromInt(xkbcommon.Keysym.@"9") },
+        .{ .xkb = xkbcommon.Keysym.@"1" },
+        .{ .xkb = xkbcommon.Keysym.@"2" },
+        .{ .xkb = xkbcommon.Keysym.@"3" },
+        .{ .xkb = xkbcommon.Keysym.@"4" },
+        .{ .xkb = xkbcommon.Keysym.@"5" },
+        .{ .xkb = xkbcommon.Keysym.@"6" },
+        .{ .xkb = xkbcommon.Keysym.@"7" },
+        .{ .xkb = xkbcommon.Keysym.@"8" },
+        .{ .xkb = xkbcommon.Keysym.@"9" },
     },
 } = .{},
 
@@ -92,25 +92,15 @@ pub const Keysym = struct {
     xkb: xkbcommon.Keysym,
 
     pub const ziggy_options = struct {
-        pub const parse = ziggyParse;
+        pub const deserialize = ziggyDeserialize;
     };
 
-    fn ziggyParse(
-        parser: *ziggy.Parser,
+    fn ziggyDeserialize(
+        d: *const ziggy.Deserializer,
         first_tok: ziggy.Tokenizer.Token,
-    ) ziggy.Parser.Error!Keysym {
-        var keysym_buf: [512]u8 = undefined;
-        const str_no_sentinel = try parser.parseBytes([]const u8, first_tok);
-
-        if (str_no_sentinel.len >= keysym_buf.len) {
-            // Probably not the best information because this has no source location information,
-            // but if someone passes a 512 character long key name, it's really their own fault.
-            return parser.addError(.overflow);
-        }
-
-        @memcpy(keysym_buf[0..str_no_sentinel.len], str_no_sentinel);
-        keysym_buf[str_no_sentinel.len] = 0;
-        const str: [:0]u8 = @ptrCast(keysym_buf[0..str_no_sentinel.len]);
+        top_lvl: bool,
+    ) ziggy.Deserializer.Error!Keysym {
+        const str = try d.deserializeOne([:0]const u8, first_tok, top_lvl);
 
         var xkb_keysym: xkbcommon.Keysym = .fromName(str.ptr, .no_flags);
 
@@ -118,12 +108,7 @@ pub const Keysym = struct {
             xkb_keysym = .fromName(str.ptr, .case_insensitive);
 
             if (xkb_keysym == .NoSymbol) {
-                return parser.addError(.{
-                    .unknown_field = .{
-                        .name = first_tok.loc.src(parser.code),
-                        .sel = first_tok.loc.getSelection(parser.code),
-                    },
-                });
+                return d.unknownField(first_tok);
             }
 
             var buf: [128]u8 = undefined;
@@ -142,16 +127,18 @@ pub const Keysym = struct {
 pub const Color = struct {
     vec: @Vector(4, u8),
     pub const ziggy_options = struct {
-        pub const parse = ziggyParse;
+        pub const deserialize = ziggyDeserialize;
     };
 
-    fn ziggyParse(
-        parser: *ziggy.Parser,
+    fn ziggyDeserialize(
+        d: *const ziggy.Deserializer,
         first_tok: ziggy.Tokenizer.Token,
-    ) ziggy.Parser.Error!Color {
-        const str = try parser.parseBytes([]const u8, first_tok);
-        const n = std.fmt.parseInt(u32, str, 0x10) catch {
-            return parser.addError(.overflow);
+        top_lvl: bool,
+    ) ziggy.Deserializer.Error!Color {
+        const str = try d.deserializeOne([]const u8, first_tok, top_lvl);
+        const n = std.fmt.parseInt(u32, str, 16) catch |e| switch (e) {
+            error.Overflow => return d.overflow(first_tok),
+            error.InvalidCharacter => return d.unexpected(first_tok),
         };
 
         return .{ .vec = .{
@@ -163,39 +150,32 @@ pub const Color = struct {
     }
 };
 
-pub fn load(alloc: std.mem.Allocator, arena: std.mem.Allocator, maybe_path: ?[]const u8) !Config {
-    const filepath = path: {
-        if (maybe_path) |path| {
-            break :path try alloc.dupe(u8, path);
-        } else if (std.posix.getenv("XDG_CONFIG_HOME")) |conf_home| {
-            break :path try std.fs.path.join(alloc, &.{
-                conf_home,
-                "mzterwm",
-                "config.ziggy",
-            });
-        } else if (std.posix.getenv("HOME")) |home| {
-            break :path try std.fs.path.join(alloc, &.{
-                home,
-                ".config",
-                "mzterwm",
-                "config.ziggy",
-            });
-        }
+/// Find the path of the configuration file.  Returned path (if any) will be owned by the caller.
+pub fn discover(alloc: std.mem.Allocator, env: *const std.process.Environ.Map) !?[]const u8 {
+    if (env.get("XDG_CONFIG_HOME")) |conf_home| {
+        return try std.fs.path.join(alloc, &.{
+            conf_home,
+            "mzterwm",
+            "config.ziggy",
+        });
+    } else if (env.get("HOME")) |home| {
+        return try std.fs.path.join(alloc, &.{
+            home,
+            ".config",
+            "mzterwm",
+            "config.ziggy",
+        });
+    }
 
-        std.log.err(
-            "could not determine path for config file because neither" ++
-                "MZTERWM_CONFIG nor XDG_CONFIG_HOME nor HOME were set!",
-            .{},
-        );
-        return error.MissingEnv;
-    };
-    defer alloc.free(filepath);
+    return null;
+}
 
-    var file = std.fs.cwd().openFile(filepath, .{}) catch |e| {
-        std.log.err("attempting to open config file at `{s}`: {}", .{ filepath, e });
-        return error.CouldNotOpenConfig;
+pub fn load(io: std.Io, alloc: std.mem.Allocator, arena: std.mem.Allocator, path: []const u8) !Config {
+    var file = std.Io.Dir.cwd().openFile(io, path, .{}) catch |e| {
+        std.log.err("attempting to open config file at `{s}`: {}", .{ path, e });
+        return e;
     };
-    defer file.close();
+    defer file.close(io);
 
     var content_writer: std.Io.Writer.Allocating = .init(alloc);
     defer content_writer.deinit();
@@ -205,18 +185,22 @@ pub fn load(alloc: std.mem.Allocator, arena: std.mem.Allocator, maybe_path: ?[]c
     // not to be relied upon at all.  `reader` however breaks when the reported size is incorrect,
     // which happens when people use superior config file generating systems (shameless plug:
     // Confgen), yet it is still somehow the default.
-    var reader = file.readerStreaming(&.{});
-    _ = try reader.interface.streamRemaining(&content_writer.writer);
+    var reader = file.readerStreaming(io, &.{});
 
-    // add sentinel
-    try content_writer.writer.writeByte(0);
-    const content_with_sentinel = content_writer.written();
-    const content: [:0]u8 = @ptrCast(content_with_sentinel[0 .. content_with_sentinel.len - 1]);
+    const content = try reader.interface.allocRemainingAlignedSentinel(alloc, .unlimited, .of(u8), 0);
+    defer alloc.free(content);
 
-    var diag: ziggy.Diagnostic = .{ .path = filepath };
+    const opts: ziggy.Deserializer.Options = .{
+        // Needed because we free the content of the file at the end of this function.
+        .copy_strings = .always,
+    };
 
-    return ziggy.parseLeaky(Config, arena, content, .{ .diagnostic = &diag }) catch |e| {
-        std.log.err("Configuration parse error:\n{f}", .{diag.fmt(content)});
+    var meta: ziggy.Deserializer.Meta = .init;
+    return ziggy.deserializeLeaky(Config, arena, content, &meta, opts) catch |e| {
+        std.log.err(
+            "Configuration parse error:\n{f}",
+            .{meta.reportErrorsFmt(alloc, opts, content, path, e)},
+        );
         return e;
     };
 }

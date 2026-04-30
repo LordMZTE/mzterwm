@@ -1,5 +1,5 @@
 { stdenv
-, zig_0_15
+, zig_0_16
 , pkg-config
 , wayland
 , wayland-scanner
@@ -8,15 +8,16 @@
 , ...
 }:
 let
+  # We can't use zig_0_16.fetchDeps here, because that doesn't allow us to pass `--fetch=all`
   deps = stdenv.mkDerivation {
     name = "mzterwm-packages";
     src = ./.;
 
     outputHashMode = "recursive";
-    outputHash = "sha256-vPCwZGq6NpbrF5vQVizKUOogYnvJVOmbaORysrGsxs8=";
+    outputHash = "sha256-+SJvVBiaK5gf6M4rCuGagl/DreEqCt5yIzYkBC45HbQ=";
     preferLocalBuild = true;
 
-    nativeBuildInputs = [ zig_0_15 ];
+    nativeBuildInputs = [ zig_0_16 ];
 
     dontConfigure = true;
 
@@ -36,7 +37,7 @@ stdenv.mkDerivation {
   src = ./.;
 
   nativeBuildInputs = [
-    zig_0_15
+    zig_0_16
     pkg-config
   ];
 

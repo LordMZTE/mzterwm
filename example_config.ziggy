@@ -3,7 +3,7 @@
 
 // Optional cursor theme configuration.  You probably don't have the cursor theme used in this
 // example on your system; use whatever you like.
-.cursor = {
+.cursor = .{
     .theme = "LyraX-cursors",
     .size = 24,
 },
@@ -11,7 +11,7 @@
 // Optional pointer warp configuration.
 // Can be none, output, or window to warp the pointer to the focused output's center when that
 // changes, or to the center of the focused window on change.
-.pointer_warp = "none",
+.pointer_warp = .none,
 
 // Configuration for keys that are used to switch tags.
 // Tags work similar to tags in river-classic, but the keyboard configuration is fancier.
@@ -19,15 +19,15 @@
 // To begin switching tags, hold down the modifiers configured below, and while holding them down,
 // also hold down the keys for each tag you want to activate at the same time.  The first tag key
 // you press will become your primary workspace, which governs the layout mode you'll get.
-.tag_keys = {
+.tag_keys = .{
     // The modifier key you have to hold down to begin tag switching.
     // The default here is { .meta = true }.  This has been changed to ease testing.
-    .mods = { .alt = true },
+    .mods = .{ .alt = true },
     // The keys for the tags you want to switch to, in increasing order for each tag.
     .keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9"],
 },
 
-.borders = {
+.borders = .{
     // Width of borders around windows.
     .width = 4,
     // The color a window border will have nothing's going on with the window.
@@ -39,7 +39,7 @@
     .fullscreen_color = "0000ffff",
 },
 
-.gaps = {
+.gaps = .{
     // The size of gaps that are placed around each window on every side.
     .window = 4,
     // The size of gaps that are placed on every output around the windows.
@@ -50,50 +50,50 @@
 // This differs from the default value.  By default, there are no keybinds.  You have to define them
 // all.  You probably also want to use meta instead of alt here.
 .keybinds = [
-    { .key = "Return", .mods = { .alt = true }, .action = Spawn { .argv = ["foot"] } },
-    { .key = "j", .mods = { .alt = true }, .action = FocusWindow { .direction = "next" } },
-    { .key = "k", .mods = { .alt = true }, .action = FocusWindow { .direction = "prev" } },
-    { .key = "j", .mods = { .shift = true, .alt = true }, .action = MoveWindow { .direction = "next" } },
-    { .key = "k", .mods = { .shift = true, .alt = true }, .action = MoveWindow { .direction = "prev" } },
-    { .key = "period", .mods = { .alt = true }, .action = FocusOutput { .direction = "next" } },
-    { .key = "comma", .mods = { .alt = true }, .action = FocusOutput { .direction = "prev" } },
-    { .key = "period", .mods = { .alt = true , .shift = true}, .action = MoveWindowOutput { .direction = "next" } },
-    { .key = "comma", .mods = { .alt = true, .shift = true }, .action = MoveWindowOutput { .direction = "prev" } },
-    { .key = "Return", .mods = { .alt = true, .shift = true }, .action = SwapTop {} },
-    { .key = "q", .mods = { .alt = true, .shift = true }, .action = CloseWindow {} },
-    { .key = "e", .mods = { .alt = true, .shift = true }, .action = Quit {} },
-    { .key = "f", .mods = { .alt = true }, .action = ToggleWindowFullscreen {} },
-    { .key = "1", .mods = { .alt = true, .shift = true }, .action = SetWindowTags { .to = 1 } },
-    { .key = "2", .mods = { .alt = true, .shift = true }, .action = SetWindowTags { .to = 2 } },
-    { .key = "3", .mods = { .alt = true, .shift = true }, .action = SetWindowTags { .to = 4 } },
-    { .key = "4", .mods = { .alt = true, .shift = true }, .action = SetWindowTags { .to = 8 } },
-    { .key = "5", .mods = { .alt = true, .shift = true }, .action = SetWindowTags { .to = 16 } },
-    { .key = "6", .mods = { .alt = true, .shift = true }, .action = SetWindowTags { .to = 32 } },
-    { .key = "7", .mods = { .alt = true, .shift = true }, .action = SetWindowTags { .to = 64 } },
-    { .key = "8", .mods = { .alt = true, .shift = true }, .action = SetWindowTags { .to = 128 } },
-    { .key = "9", .mods = { .alt = true, .shift = true }, .action = SetWindowTags { .to = 256 } },
-    { .key = "1", .mods = { .alt = true, .shift = true, .ctrl = true }, .action = AddWindowTags { .tags = 1 } },
-    { .key = "2", .mods = { .alt = true, .shift = true, .ctrl = true }, .action = AddWindowTags { .tags = 2 } },
-    { .key = "3", .mods = { .alt = true, .shift = true, .ctrl = true }, .action = AddWindowTags { .tags = 4 } },
-    { .key = "4", .mods = { .alt = true, .shift = true, .ctrl = true }, .action = AddWindowTags { .tags = 8 } },
-    { .key = "5", .mods = { .alt = true, .shift = true, .ctrl = true }, .action = AddWindowTags { .tags = 16 } },
-    { .key = "6", .mods = { .alt = true, .shift = true, .ctrl = true }, .action = AddWindowTags { .tags = 32 } },
-    { .key = "7", .mods = { .alt = true, .shift = true, .ctrl = true }, .action = AddWindowTags { .tags = 64 } },
-    { .key = "8", .mods = { .alt = true, .shift = true, .ctrl = true }, .action = AddWindowTags { .tags = 128 } },
-    { .key = "9", .mods = { .alt = true, .shift = true, .ctrl = true }, .action = AddWindowTags { .tags = 256 } },
+    .{ .key = "Return", .mods = .{ .alt = true }, .action = .spawn(["foot"]) },
+    .{ .key = "j", .mods = .{ .alt = true }, .action = .focus_window(.next) },
+    .{ .key = "k", .mods = .{ .alt = true }, .action = .focus_window(.prev) },
+    .{ .key = "j", .mods = .{ .shift = true, .alt = true }, .action = .move_window(.next) },
+    .{ .key = "k", .mods = .{ .shift = true, .alt = true }, .action = .move_window(.prev) },
+    .{ .key = "period", .mods = .{ .alt = true }, .action = .focus_output(.next) },
+    .{ .key = "comma", .mods = .{ .alt = true }, .action = .focus_output(.prev) },
+    .{ .key = "period", .mods = .{ .alt = true , .shift = true}, .action = .move_window_output(.next) },
+    .{ .key = "comma", .mods = .{ .alt = true, .shift = true }, .action = .move_window_output(.prev) },
+    .{ .key = "Return", .mods = .{ .alt = true, .shift = true }, .action = .swap_top },
+    .{ .key = "q", .mods = .{ .alt = true, .shift = true }, .action = .close_window },
+    .{ .key = "e", .mods = .{ .alt = true, .shift = true }, .action = .quit },
+    .{ .key = "f", .mods = .{ .alt = true }, .action = .toggle_window_fullscreen },
+    .{ .key = "1", .mods = .{ .alt = true, .shift = true }, .action = .set_window_tags(1) },
+    .{ .key = "2", .mods = .{ .alt = true, .shift = true }, .action = .set_window_tags(2) },
+    .{ .key = "3", .mods = .{ .alt = true, .shift = true }, .action = .set_window_tags(4) },
+    .{ .key = "4", .mods = .{ .alt = true, .shift = true }, .action = .set_window_tags(8) },
+    .{ .key = "5", .mods = .{ .alt = true, .shift = true }, .action = .set_window_tags(16) },
+    .{ .key = "6", .mods = .{ .alt = true, .shift = true }, .action = .set_window_tags(32) },
+    .{ .key = "7", .mods = .{ .alt = true, .shift = true }, .action = .set_window_tags(64) },
+    .{ .key = "8", .mods = .{ .alt = true, .shift = true }, .action = .set_window_tags(128) },
+    .{ .key = "9", .mods = .{ .alt = true, .shift = true }, .action = .set_window_tags(256) },
+    .{ .key = "1", .mods = .{ .alt = true, .shift = true, .ctrl = true }, .action = .add_window_tags(1) },
+    .{ .key = "2", .mods = .{ .alt = true, .shift = true, .ctrl = true }, .action = .add_window_tags(2) },
+    .{ .key = "3", .mods = .{ .alt = true, .shift = true, .ctrl = true }, .action = .add_window_tags(4) },
+    .{ .key = "4", .mods = .{ .alt = true, .shift = true, .ctrl = true }, .action = .add_window_tags(8) },
+    .{ .key = "5", .mods = .{ .alt = true, .shift = true, .ctrl = true }, .action = .add_window_tags(16) },
+    .{ .key = "6", .mods = .{ .alt = true, .shift = true, .ctrl = true }, .action = .add_window_tags(32) },
+    .{ .key = "7", .mods = .{ .alt = true, .shift = true, .ctrl = true }, .action = .add_window_tags(64) },
+    .{ .key = "8", .mods = .{ .alt = true, .shift = true, .ctrl = true }, .action = .add_window_tags(128) },
+    .{ .key = "9", .mods = .{ .alt = true, .shift = true, .ctrl = true }, .action = .add_window_tags(256) },
 ],
 
 // Per-layout configuration
-.layouts = {
-    .focus = {
+.layouts = .{
+    .focus = .{
         // This is empty by default.
         .keybinds = [
-            { .key = "l", .mods = { .alt = true }, .action = ResizePrimaryDirectional { .by = 16 } },
-            { .key = "h", .mods = { .alt = true }, .action = ResizePrimaryDirectional { .by = -16 } },
-            { .key = "Up", .mods = { .alt = true }, .action = SetDirection { .to = "up" } },
-            { .key = "Down", .mods = { .alt = true }, .action = SetDirection { .to = "down" } },
-            { .key = "Left", .mods = { .alt = true }, .action = SetDirection { .to = "left" } },
-            { .key = "Right", .mods = { .alt = true }, .action = SetDirection { .to = "right" } },
+            .{ .key = "l", .mods = .{ .alt = true }, .action = .resize_primary_directional(16) },
+            .{ .key = "h", .mods = .{ .alt = true }, .action = .resize_primary_directional(-16) },
+            .{ .key = "Up", .mods = .{ .alt = true }, .action = .set_direction(.up) },
+            .{ .key = "Down", .mods = .{ .alt = true }, .action = .set_direction(.down) },
+            .{ .key = "Left", .mods = .{ .alt = true }, .action = .set_direction(.left) },
+            .{ .key = "Right", .mods = .{ .alt = true }, .action = .set_direction(.right) },
         ],
     },
 }

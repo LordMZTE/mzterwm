@@ -9,8 +9,8 @@ const river = wayland.client.river;
 
 globals: *Globals,
 
-/// This is a SegmentedList because element pointers must stay valid.
-entries: std.SegmentedList(KeyBind, 64),
+entries: std.ArrayList(*KeyBind),
+entry_pool: std.heap.MemoryPool(KeyBind),
 
 seats: std.ArrayList(*WindowManager.Seat),
 
@@ -88,21 +88,22 @@ pub const KeySpec = struct {
     mods: river.SeatV1.Modifiers,
 };
 
-pub fn init(globals: *Globals) KeyManager {
+pub fn init(globals: *Globals) !KeyManager {
     return .{
         .globals = globals,
-        .entries = .{},
+        .entries = .empty,
+        .entry_pool = try .initCapacity(globals.alloc, 64),
         .seats = .empty,
     };
 }
 
 pub fn deinit(self: *KeyManager) void {
-    var iter = self.entries.iterator(0);
-    while (iter.next()) |it| {
+    for (self.entries.items) |it| {
         it.deinit(self.globals.alloc);
     }
 
     self.entries.deinit(self.globals.alloc);
+    self.entry_pool.deinit(self.globals.alloc);
 
     for (self.seats.items) |seat| {
         seat.deinit();
@@ -117,7 +118,8 @@ pub fn register(
     cb: Callback(*Udata),
     udata: *Udata,
 ) !*KeyBind {
-    const entry = try self.entries.addOne(self.globals.alloc);
+    const entry = try self.entry_pool.create(self.globals.alloc);
+    errdefer self.entry_pool.destroy(entry);
     entry.* = .{
         .bind = bind,
         .cb = @ptrCast(cb),
@@ -125,6 +127,8 @@ pub fn register(
         .seatdata = .empty,
         .is_enabled = false,
     };
+
+    try self.entries.append(self.globals.alloc, entry);
 
     for (self.seats.items) |seat| {
         try entry.registerTo(self.globals, seat);
@@ -134,16 +138,14 @@ pub fn register(
 }
 
 pub fn seatAdded(self: *KeyManager, new: *WindowManager.Seat) !void {
-    var iter = self.entries.iterator(0);
-    while (iter.next()) |ent| {
+    for (self.entries.items) |ent| {
         try ent.registerTo(self.globals, new);
     }
     try self.seats.append(self.globals.alloc, new);
 }
 
 pub fn seatRemoved(self: *KeyManager, old: *WindowManager.Seat) void {
-    var iter = self.entries.iterator(0);
-    while (iter.next()) |ent| {
+    for (self.entries.items) |ent| {
         ent.unregisterFrom(old);
     }
 
