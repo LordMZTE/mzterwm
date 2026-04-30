@@ -14,7 +14,7 @@ let
     src = ./.;
 
     outputHashMode = "recursive";
-    outputHash = "sha256-+SJvVBiaK5gf6M4rCuGagl/DreEqCt5yIzYkBC45HbQ=";
+    outputHash = "sha256-vMDuTMVYv+josz8NehGs9ipZNfn6iz3YHaG20HL6b8g=";
     preferLocalBuild = true;
 
     nativeBuildInputs = [ zig_0_16 ];
