@@ -88,11 +88,11 @@ pub const KeySpec = struct {
     mods: river.SeatV1.Modifiers,
 };
 
-pub fn init(globals: *Globals) KeyManager {
+pub fn init(globals: *Globals) !KeyManager {
     return .{
         .globals = globals,
         .entries = .empty,
-        .entry_pool = .empty,
+        .entry_pool = try .initCapacity(globals.alloc, 64),
         .seats = .empty,
     };
 }

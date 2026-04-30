@@ -576,7 +576,7 @@ pub fn init(
         .outputs = .empty,
         .windows = .{},
         .window_pool = .empty,
-        .keys = .init(globals),
+        .keys = try .init(globals),
         .selected_output = 0,
         .selected_output_dirty = false,
         .focused_window = null,
