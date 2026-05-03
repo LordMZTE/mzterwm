@@ -10,7 +10,7 @@
             .hash = "wayland-0.6.0-lQa1kqz8AQADQmdNJsNhLoNHcnEGEUjrOaPV-dtEnEmX",
         },
         .s2s = .{
-            .url = "git+https://github.com/lordmzte/s2s.git?ref=pkg-hash-fix#1f51ad8f00b0cc7b1b5b344fed1baf5b156d4f76",
+            .url = "git+https://github.com/ziglibs/s2s.git?ref=master#2ad1e7e4eb73f6ed90218d305472d8922b109d69",
             .hash = "s2s-0.0.1-qt8ajXF9AABu59Lb3VhU2fa84NnRRpLsds6qQUOwJcOx",
         },
         .ziggy = .{
