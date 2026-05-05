@@ -1025,6 +1025,11 @@ fn performManage(self: *WindowManager) !void {
                 outp.layoutArea().inset(self.config.gaps.output),
                 windows,
             );
+        } else if (fullscreen_win == self.focused_window and do_window_pointer_warp) {
+            // If we've just focused a fullscreened window, perform pointer warp now to the center
+            // of the output instead of the old, now meaningless center of the window.
+            self.keys.warpPointer(outp.region.center());
+            do_window_pointer_warp = false;
         }
 
         for (windows) |win| {
