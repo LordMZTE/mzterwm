@@ -81,6 +81,27 @@ child_env: *const std.process.Environ.Map,
 /// You must not call `async` on this, as those jobs may not run until cleanup.
 longgrp: std.Io.Group,
 
+/// The tags that are currently selected in an ongoing switch operation and will be commited when
+/// finished.
+switching_tags: ?struct {
+    primary: TagSpace.TagIdx,
+    mask: TagSpace.Mask,
+
+    const init: @This() = .{ .primary = 0, .mask = 0 };
+
+    fn emitChangeEvent(self: @This(), wm: *WindowManager, outp: *Output) void {
+        const name = outp.name() orelse return;
+        const ts = &(outp.tag_space orelse return);
+
+        wm.ipc.emitEventToAll(.{ .tag_change = .{
+            .mask = self.mask,
+            .primary = self.primary,
+            .output = name,
+            .occupied = ts.computeOccupiedTags(),
+        } });
+    }
+},
+
 pub const Output = struct {
     wm: *WindowManager,
     river: *river.OutputV1,
@@ -592,6 +613,7 @@ pub fn init(
         .prev_active_layout = .focus,
         .child_env = env,
         .longgrp = .init,
+        .switching_tags = null,
     };
 }
 
@@ -646,25 +668,35 @@ fn onTagKeyEvent(_: *river.XkbBindingV1, ev: river.XkbBindingV1.Event, keydat: *
         .pressed => {
             keydat.wm.tag_keys_down +|= 1;
             const outp = keydat.wm.selectedOutput() orelse return;
-            const ts = &(outp.tag_space orelse return);
+            if (keydat.wm.switching_tags == null) keydat.wm.switching_tags = .init;
+            const tags = &keydat.wm.switching_tags.?;
+
             if (keydat.wm.tag_keys_down == 1) {
                 // This is the first key being pressed this switch operation.  Set primary and focus
                 // only tags we're now subsequently pressing.
-                ts.primary = tag;
-                ts.mask = @as(TagSpace.Mask, 1) << tag;
+                tags.primary = tag;
+                tags.mask = @as(TagSpace.Mask, 1) << tag;
 
                 keydat.wm.ipc.emitEventToAll(.tag_switch_start);
-                keydat.wm.notifyTagsChangedOn(outp);
-                keydat.wm.ipc.flushAll();
             } else {
-                ts.mask |= @as(TagSpace.Mask, 1) << tag;
-                keydat.wm.notifyTagsChangedOn(outp);
-                keydat.wm.ipc.flushAll();
+                std.debug.assert(tags.mask != 0);
+                tags.mask |= @as(TagSpace.Mask, 1) << tag;
             }
+
+            tags.emitChangeEvent(keydat.wm, outp);
+            keydat.wm.ipc.flushAll();
         },
         .released => {
             keydat.wm.tag_keys_down -|= 1;
             if (keydat.wm.tag_keys_down == 0) {
+                const tags = keydat.wm.switching_tags orelse unreachable;
+                const outp = keydat.wm.selectedOutput() orelse return;
+                const ts = &(outp.tag_space orelse return);
+
+                ts.primary = tags.primary;
+                ts.mask = tags.mask;
+                keydat.wm.switching_tags = null;
+                keydat.wm.notifyTagsChangedOn(outp);
                 keydat.wm.ipc.emitEventToAll(.tag_switch_stop);
                 keydat.wm.ipc.flushAll();
             }
