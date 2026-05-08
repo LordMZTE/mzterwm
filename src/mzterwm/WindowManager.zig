@@ -383,6 +383,7 @@ pub const Window = struct {
                     for (self.wm.outputs.items) |outp| {
                         if (&(outp.tag_space orelse continue) != ts) continue;
                         self.wm.notifyTagsChangedOn(outp);
+                        self.wm.ipc.flushAll();
                         break;
                     }
                 } else {
@@ -424,6 +425,7 @@ pub const Window = struct {
                         .output = name,
                         .title = self.title.items,
                     } });
+                    self.wm.ipc.flushAll();
                 }
             },
             .parent => {},
@@ -651,19 +653,21 @@ fn onTagKeyEvent(_: *river.XkbBindingV1, ev: river.XkbBindingV1.Event, keydat: *
                 ts.primary = tag;
                 ts.mask = @as(TagSpace.Mask, 1) << tag;
 
-                // TODO: this is suboptimal because we send two events but flush each individually.
-                // Perhaps consider persistent per-client buffers.
                 keydat.wm.ipc.emitEventToAll(.tag_switch_start);
                 keydat.wm.notifyTagsChangedOn(outp);
+                keydat.wm.ipc.flushAll();
             } else {
                 ts.mask |= @as(TagSpace.Mask, 1) << tag;
                 keydat.wm.notifyTagsChangedOn(outp);
+                keydat.wm.ipc.flushAll();
             }
         },
         .released => {
             keydat.wm.tag_keys_down -|= 1;
-            if (keydat.wm.tag_keys_down == 0)
+            if (keydat.wm.tag_keys_down == 0) {
                 keydat.wm.ipc.emitEventToAll(.tag_switch_stop);
+                keydat.wm.ipc.flushAll();
+            }
         },
         .stop_repeat => {},
     }
@@ -738,7 +742,7 @@ pub fn unfocus(self: *WindowManager) void {
 
 /// Will invalide windows on the given output and notify IPC clients and layouts of a tag change
 /// event.  Should also be called when windows move between outputs and tags as this also sends
-/// occupied tags.
+/// occupied tags.  Does not flush IPC clients!  Caller should consider doing that afterwards.
 pub fn notifyTagsChangedOn(self: *WindowManager, outp: *Output) void {
     const ts = &(outp.tag_space orelse return);
     ts.visible_windows_valid = false;
@@ -803,6 +807,7 @@ pub fn moveWindowTo(self: *WindowManager, opts: struct {
     if (prev) |ts| {
         if (self.findOutputForTagSpace(ts)) |outp| {
             self.notifyTagsChangedOn(outp);
+            self.ipc.flushAll();
         }
     }
 
@@ -898,6 +903,7 @@ fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
 
             if (sel_outp) |outp| {
                 self.notifyTagsChangedOn(outp);
+                self.ipc.flushAll();
             }
         },
         .output => |outp| {

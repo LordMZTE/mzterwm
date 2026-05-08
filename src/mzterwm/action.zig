@@ -149,6 +149,7 @@ pub const Action = union(enum) {
                 }
                 ts.visible_windows_valid = false;
                 wm.notifyTagsChangedOn(outp);
+                wm.ipc.flushAll();
             },
             .spawn => |argv| {
                 try wm.longgrp.concurrent(

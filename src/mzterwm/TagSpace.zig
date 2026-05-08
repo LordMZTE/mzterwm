@@ -93,6 +93,7 @@ pub fn evacuateTo(self: *TagSpace, other: ?*TagSpace) !void {
         o.visible_windows_valid = false;
         if (self.wm.findOutputForTagSpace(o)) |outp| {
             self.wm.notifyTagsChangedOn(outp);
+            self.wm.ipc.flushAll();
         }
     }
     self.visible_windows_valid = false;
@@ -243,4 +244,5 @@ pub fn onSelectedWindowChanged(self: *TagSpace) std.mem.Allocator.Error!void {
         .title = if (maybe_focus_win) |focus| focus.title.items else "",
         .output = name,
     } });
+    self.wm.ipc.flushAll();
 }

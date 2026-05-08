@@ -67,12 +67,9 @@ pub fn emitEventToAll(self: *IPCHandler, event: proto.pkt.Event) void {
 
     var i: usize = 0;
 
-    var grp: std.Io.Group = .init;
-    defer grp.cancel(io);
-
     while (i < self.clients.items.len) {
         const cl = &self.clients.items[i];
-        writeAndFlushPacket(&cl.writer.interface, event) catch |e| {
+        proto.writePkt(&cl.writer.interface, event) catch |e| {
             log.warn("Couldn't dispatch event to client: {}, closing connection", .{e});
             cl.deinit(alloc, io);
             _ = self.clients.swapRemove(i);
@@ -80,13 +77,30 @@ pub fn emitEventToAll(self: *IPCHandler, event: proto.pkt.Event) void {
             // Don't increment index here so we process the new client now at the current position.
             continue;
         };
+
         i += 1;
     }
 }
 
-fn writeAndFlushPacket(stream: *std.Io.Writer, pkt: anytype) !void {
-    try proto.writePkt(stream, pkt);
-    try stream.flush();
+pub fn flushAll(self: *IPCHandler) void {
+    const alloc = self.wm.globals.alloc;
+    const io = self.wm.globals.io;
+
+    var i: usize = 0;
+
+    while (i < self.clients.items.len) {
+        const cl = &self.clients.items[i];
+        cl.writer.interface.flush() catch |e| {
+            log.warn("Couldn't flush client write buffer: {}, closing connection", .{e});
+            cl.deinit(alloc, io);
+            _ = self.clients.swapRemove(i);
+
+            // Don't increment index here so we process the new client now at the current position.
+            continue;
+        };
+
+        i += 1;
+    }
 }
 
 /// Called from the event loop when any file descriptor that isn't otherwise used and is part of the
@@ -267,6 +281,7 @@ fn handleRequest(
                 ts.mask = req.mask;
                 self.wm.notifyTagsChangedOn(output);
                 self.wm.requestManage();
+                self.wm.ipc.flushAll();
             }
 
             try proto.writePkt(writer, proto.pkt.Event{ .action_result = .{
