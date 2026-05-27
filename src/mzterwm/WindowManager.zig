@@ -311,7 +311,14 @@ pub const Window = struct {
     /// A struct that stores data about the window the we decide and need to tell River about.
     /// Some fields of this are updated during a manage sequence, others during a render sequence
     pub const RenderState = struct {
+        /// Region of the actual window excluding borders.
+        /// Set by Layout
         region: mzterwm.Region = .zero,
+
+        /// Region the window, including borders, should be clipped to.
+        /// Set by Layout
+        clip_region: mzterwm.Region = .zero,
+
         hidden: bool = false,
         set_fixed_props: bool = false,
         border_width: u31 = 0,
@@ -326,6 +333,7 @@ pub const Window = struct {
         dirty: packed struct {
             pos: bool = false,
             size: bool = false,
+            clip_region: bool = false,
             border: bool = false,
             want_fullscreen: bool = false,
             is_fullscreen: bool = false,
@@ -335,8 +343,8 @@ pub const Window = struct {
         pub fn updateRegion(self: *RenderState, new: mzterwm.Region) void {
             const inner = new.inset(self.border_width);
 
-            if (@reduce(.Or, self.region.pos != inner.pos)) self.dirty.pos = true;
-            if (@reduce(.Or, self.region.size != inner.size)) self.dirty.size = true;
+            self.dirty.pos |= @reduce(.Or, self.region.pos != inner.pos);
+            self.dirty.size |= @reduce(.Or, self.region.size != inner.size);
 
             self.region = inner;
         }
@@ -1163,6 +1171,16 @@ fn performRender(self: *WindowManager) !void {
             if (win.render.dirty.pos) {
                 win.node.setPosition(win.render.region.pos[0], win.render.region.pos[1]);
                 win.render.dirty.pos = false;
+            }
+
+            if (win.render.dirty.clip_region) {
+                win.river.setClipBox(
+                    win.render.clip_region.pos[0],
+                    win.render.clip_region.pos[1],
+                    win.render.clip_region.size[0],
+                    win.render.clip_region.size[1],
+                );
+                win.render.dirty.clip_region = false;
             }
 
             try win.updateBorderColor();
