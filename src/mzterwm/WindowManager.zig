@@ -1166,9 +1166,8 @@ fn performRender(self: *WindowManager) !void {
             }
 
             try win.updateBorderColor();
-            const color = mzterwm.colorToRiver(win.render.border_color);
-
             if (win.render.dirty.border) {
+                const color = mzterwm.colorToRiver(win.render.border_color);
                 win.river.setBorders(
                     .{
                         .top = true,
