@@ -12,10 +12,20 @@ const Focus = @This();
 primary_ratio: mzterwm.Ratio,
 direction: mzterwm.Cardinal,
 
-pub const init: Focus = .{
+pub fn init(wm: *mzterwm.WindowManager) !Focus {
+    _ = wm;
+    return init_val;
+}
+
+pub const init_val: Focus = .{
     .primary_ratio = .half,
     .direction = .left,
 };
+
+pub fn deinit(self: *Focus, wm: *mzterwm.WindowManager) void {
+    _ = self;
+    _ = wm;
+}
 
 pub const Global = struct {
     keybinds: []KeyData,
@@ -111,14 +121,18 @@ fn onUserKey(_: *river.XkbBindingV1, ev: river.XkbBindingV1.Event, keydat: *KeyD
 pub fn performLayout(
     self: *Focus,
     wm: *mzterwm.WindowManager,
-    region: mzterwm.Region,
+    output_region: mzterwm.Region,
     windows: []const *mzterwm.WindowManager.Window,
 ) !void {
+    if (windows.len == 0) return;
+
+    const region = output_region.inset(wm.config.gaps.output);
     const gap = wm.config.gaps.window;
     const axis = self.direction.axis();
 
-    if (windows.len == 0) return;
     if (windows.len == 1) {
+        windows[0].render.layout_hide = false;
+        windows[0].render.updateClip(.zero);
         windows[0].render.updateRegion(region.inset(gap));
         return;
     }
@@ -126,6 +140,8 @@ pub fn performLayout(
     const primary, const secondary = region.sliceCardinal(self.primary_ratio, self.direction.opposite());
 
     windows[0].render.updateRegion(primary.inset(gap));
+    windows[0].render.layout_hide = false;
+    windows[0].render.updateClip(.zero);
 
     const secondary_off = switch (axis) {
         .row => secondary.size[1] / @as(u31, @truncate(windows.len - 1)),
@@ -149,6 +165,8 @@ pub fn performLayout(
             },
         };
 
+        win.render.layout_hide = false;
+        win.render.updateClip(.zero);
         win.render.updateRegion(secondary_region.inset(gap));
     }
 }

@@ -5,7 +5,7 @@ const std = @import("std");
 const proto = @import("mzterwm-proto");
 const mzterwm = @import("../root.zig");
 
-const Layout = @import("layout.zig").Layout;
+const layout = @import("layout.zig");
 const WindowManager = @import("WindowManager.zig");
 
 pub const bitwidth = proto.tag_bitwidth;
@@ -40,15 +40,24 @@ const TagSpace = @This();
 
 pub const TagData = struct {
     /// The layout of this tag
-    layout: Layout,
+    layout: layout.Layout,
 
     pub const init: TagData = .{
-        .layout = .{ .focus = .init },
+        .layout = .{ .focus = .init_val },
     };
 
-    pub fn deinit(self: *TagData) void {
-        _ = self;
-        //self.layout.deinit();
+    pub fn swapLayout(self: *TagData, to: layout.LayoutKind, wm: *mzterwm.WindowManager) !void {
+        if (self.layout == to) return;
+
+        const new = switch (to) {
+            inline else => |to_ct| @unionInit(layout.Layout, @tagName(to_ct), try .init(wm)),
+        };
+        self.layout.deinit(wm);
+        self.layout = new;
+    }
+
+    pub fn deinit(self: *TagData, wm: *mzterwm.WindowManager) void {
+        self.layout.deinit(wm);
     }
 };
 
@@ -66,7 +75,7 @@ pub fn init(wm: *WindowManager) TagSpace {
 
 pub fn deinit(self: *TagSpace) void {
     for (&self.tagdata) |*dat| {
-        dat.deinit();
+        dat.deinit(self.wm);
     }
     self.visible_windows.deinit(self.wm.globals.alloc);
 }
@@ -187,22 +196,21 @@ fn commitFocusInner(self: *TagSpace) std.mem.Allocator.Error!void {
         self.wm.focused_window = new_focus;
         if (self.wm.focused_window_dirty == .no)
             self.wm.focused_window_dirty = .yes;
-        self.wm.updateActiveLayout();
     }
 }
 
-pub fn maybeUpdateFocus(self: *TagSpace, comptime rotFn: fn (*usize, usize) void) !void {
+pub fn maybeUpdateFocus(self: *TagSpace, comptime rotFn: mzterwm.RotFn) !void {
     switch (self.wm.focus_override) {
         .none => {
             const wins = try self.getVisibleWindows();
-            rotFn(&self.selected_window, wins.len);
+            rotFn(usize, &self.selected_window, wins.len - 1);
             self.visible_windows_valid = false;
             try self.commitFocusCurrentOutput();
             try self.onSelectedWindowChanged();
         },
         .non_exclusive => {
             const wins = try self.getVisibleWindows();
-            rotFn(&self.selected_window, wins.len);
+            rotFn(usize, &self.selected_window, wins.len - 1);
             self.wm.focus_override = .none;
             self.wm.onFocusOverrideChanged();
             try self.commitFocusCurrentOutput();

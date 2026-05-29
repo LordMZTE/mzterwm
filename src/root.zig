@@ -175,7 +175,7 @@ pub const Region = struct {
     }
 
     pub fn contains(self: Region, point: @Vector(2, i32)) bool {
-        const corner = self.pos + self.size;
+        const corner = self.bottomRight();
 
         return @reduce(.And, point >= self.pos) and
             @reduce(.And, point <= corner);
@@ -189,8 +189,21 @@ pub const Region = struct {
         };
     }
 
+    pub fn outset(self: Region, size: u31) Region {
+        const size_vec: @Vector(2, u31) = @splat(size);
+        return .{
+            .pos = self.pos -| size_vec,
+            .size = self.size +| size_vec * @as(@Vector(2, u31), @splat(2)),
+        };
+    }
+
     pub fn center(self: Region) @Vector(2, i32) {
         return self.pos + (self.size / @as(@Vector(2, u31), @splat(2)));
+    }
+
+    /// Returns the position of the lower right corner of the region.
+    pub fn bottomRight(self: Region) @Vector(2, i32) {
+        return self.pos + self.size;
     }
 
     test "center" {
@@ -243,31 +256,33 @@ pub fn colorToRiver(color: @Vector(4, u8)) @Vector(4, u32) {
     return @truncate(alpha_ratio.scale(prepremul));
 }
 
-/// Rotate some focus index forward
-pub fn rotFocusFwd(focus: *usize, n: usize) void {
-    if (n == 0) return;
+pub const RotFn = @TypeOf(rotFocusFwd);
 
-    focus.* = if (focus.* >= n - 1) 0 else focus.* + 1;
+/// Rotate some focus index forward
+pub fn rotFocusFwd(comptime T: type, focus: *T, max: T) void {
+    if (max == 0) return;
+
+    focus.* = if (focus.* >= max) 0 else focus.* + 1;
 }
 
 /// Like rotFocusFwd, but return true if wrapping happened
-pub fn rotFocusFwdCheckWrap(focus: *usize, n: usize) bool {
+pub fn rotFocusFwdCheckWrap(comptime T: type, focus: *T, max: T) bool {
     const prev = focus.*;
-    rotFocusFwd(focus, n);
+    rotFocusFwd(T, focus, max);
     return focus.* < prev;
 }
 
 /// Rotate some focus index backward
-pub fn rotFocusBck(focus: *usize, n: usize) void {
-    if (n == 0) return;
+pub fn rotFocusBck(comptime T: type, focus: *T, max: T) void {
+    if (max == 0) return;
 
-    focus.* = if (focus.* == 0 or focus.* > n - 1) n - 1 else focus.* - 1;
+    focus.* = if (focus.* == 0 or focus.* > max) max else focus.* - 1;
 }
 
 /// Like rotFocusBck, but return true if wrapping happened
-pub fn rotFocusBckCheckWrap(focus: *usize, n: usize) bool {
+pub fn rotFocusBckCheckWrap(comptime T: type, focus: *T, max: T) bool {
     const prev = focus.*;
-    rotFocusBck(focus, n);
+    rotFocusBck(T, focus, max);
     return focus.* > prev;
 }
 

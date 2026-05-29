@@ -70,6 +70,7 @@ focus_override: enum {
 
 layout_global: struct {
     focus: layout.Focus.Global,
+    scroll: layout.Scroll.Global,
 },
 prev_active_layout: layout.LayoutKind,
 
@@ -202,7 +203,7 @@ pub const Output = struct {
 
                         if (self.wm.selected_output > i) {
                             self.wm.selected_output -|= 1;
-                            self.wm.selected_output_dirty = false;
+                            self.wm.selected_output_dirty = true;
                         }
 
                         if (old.tag_space) |*ts| {
@@ -319,6 +320,13 @@ pub const Window = struct {
         /// Set by Layout
         clip_region: mzterwm.Region = .zero,
 
+        /// If the layout wants to hide this window.
+        /// Set by Layout
+        // TODO: clean this up, these properties that are updated from random places suck
+        layout_hide: bool = false,
+
+        /// The actual hidden state of the window.
+        /// Set in the render sequence.
         hidden: bool = false,
         set_fixed_props: bool = false,
         border_width: u31 = 0,
@@ -347,6 +355,15 @@ pub const Window = struct {
             self.dirty.size |= @reduce(.Or, self.region.size != inner.size);
 
             self.region = inner;
+        }
+
+        /// Updates the region the window, including borders, should be clipped to.  The position is
+        /// relative to the window's top left corner.
+        pub fn updateClip(self: *RenderState, new: mzterwm.Region) void {
+            if (std.meta.eql(self.clip_region, new)) return;
+
+            self.clip_region = new;
+            self.dirty.clip_region = true;
         }
     };
 
@@ -663,6 +680,7 @@ pub fn setup(self: *WindowManager) !void {
 
     self.layout_global = .{
         .focus = try .init(self),
+        .scroll = try .init(self),
     };
 
     // We always start on focus at the moment.
@@ -1012,6 +1030,7 @@ fn performManage(self: *WindowManager) !void {
             }
         }
 
+        self.updateActiveLayout();
         self.selected_output_dirty = false;
     }
 
@@ -1068,7 +1087,7 @@ fn performManage(self: *WindowManager) !void {
         if (fullscreen_win == null) {
             try ts.tagdata[ts.primary].layout.performLayout(
                 self,
-                outp.layoutArea().inset(self.config.gaps.output),
+                outp.layoutArea(),
                 windows,
             );
         } else if (fullscreen_win == self.focused_window and do_window_pointer_warp) {
@@ -1153,7 +1172,7 @@ fn performRender(self: *WindowManager) !void {
         const win: *Window = .fromListNode(node);
 
         if (win.tag_space) |tagspace| {
-            const should_hide = tagspace.mask & win.mask == 0;
+            const should_hide = win.render.layout_hide or tagspace.mask & win.mask == 0;
             if (should_hide != win.render.hidden) {
                 if (should_hide) win.river.hide() else win.river.show();
                 win.render.hidden = should_hide;
@@ -1171,16 +1190,6 @@ fn performRender(self: *WindowManager) !void {
             if (win.render.dirty.pos) {
                 win.node.setPosition(win.render.region.pos[0], win.render.region.pos[1]);
                 win.render.dirty.pos = false;
-            }
-
-            if (win.render.dirty.clip_region) {
-                win.river.setClipBox(
-                    win.render.clip_region.pos[0],
-                    win.render.clip_region.pos[1],
-                    win.render.clip_region.size[0],
-                    win.render.clip_region.size[1],
-                );
-                win.render.dirty.clip_region = false;
             }
 
             try win.updateBorderColor();
@@ -1201,6 +1210,23 @@ fn performRender(self: *WindowManager) !void {
                 );
                 win.render.dirty.border = false;
             }
+
+            if (win.render.dirty.clip_region) {
+                if (std.meta.eql(win.render.clip_region, .zero)) {
+                    win.river.setClipBox(0, 0, 0, 0);
+                } else {
+                    var pos = win.render.clip_region.pos;
+                    pos -= @splat(win.render.border_width);
+                    win.river.setClipBox(
+                        pos[0],
+                        pos[1],
+                        win.render.clip_region.size[0],
+                        win.render.clip_region.size[1],
+                    );
+                }
+
+                win.render.dirty.clip_region = false;
+            }
         }
     }
 }
@@ -1219,11 +1245,12 @@ pub fn updateActiveLayout(self: *WindowManager) void {
     const new_layout: layout.LayoutKind = ts.tagdata[ts.primary].layout;
 
     if (new_layout != self.prev_active_layout) {
+        std.log.info("Layout switched: {} -> {}", .{ self.prev_active_layout, new_layout });
         switch (self.prev_active_layout) {
-            inline else => |k| @field(self.wm.layout_global, @tagName(k)).leave(),
+            inline else => |k| @field(self.layout_global, @tagName(k)).leave(),
         }
         switch (new_layout) {
-            inline else => |k| @field(self.wm.layout_global, @tagName(k)).enter(),
+            inline else => |k| @field(self.layout_global, @tagName(k)).enter(),
         }
         self.prev_active_layout = new_layout;
     }

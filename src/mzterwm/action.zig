@@ -1,6 +1,8 @@
 const std = @import("std");
 const mzterwm = @import("../root.zig");
 
+const layout = @import("layout.zig");
+
 const WindowManager = @import("WindowManager.zig");
 const TagSpace = @import("TagSpace.zig");
 
@@ -15,6 +17,7 @@ pub const Action = union(enum) {
     set_window_tags: TagSpace.Mask,
     add_window_tags: TagSpace.Mask,
     spawn: []const []const u8,
+    rotate_layout: FocusDirection,
     quit,
 
     pub fn perform(self: Action, wm: *WindowManager) !void {
@@ -35,8 +38,8 @@ pub const Action = union(enum) {
                 if (wm.outputs.items.len < 2) return;
 
                 switch (direction) {
-                    .next => mzterwm.rotFocusFwd(&wm.selected_output, wm.outputs.items.len),
-                    .prev => mzterwm.rotFocusBck(&wm.selected_output, wm.outputs.items.len),
+                    .next => mzterwm.rotFocusFwd(usize, &wm.selected_output, wm.outputs.items.len - 1),
+                    .prev => mzterwm.rotFocusBck(usize, &wm.selected_output, wm.outputs.items.len - 1),
                 }
                 wm.selected_output_dirty = true;
 
@@ -50,8 +53,8 @@ pub const Action = union(enum) {
 
                 var other_idx = ts.selected_window;
                 const wrap = switch (direction) {
-                    .next => mzterwm.rotFocusFwdCheckWrap(&other_idx, wins.len),
-                    .prev => mzterwm.rotFocusBckCheckWrap(&other_idx, wins.len),
+                    .next => mzterwm.rotFocusFwdCheckWrap(usize, &other_idx, wins.len - 1),
+                    .prev => mzterwm.rotFocusBckCheckWrap(usize, &other_idx, wins.len - 1),
                 };
 
                 const this_win = wins[ts.selected_window];
@@ -78,8 +81,8 @@ pub const Action = union(enum) {
 
                 var other_idx = wm.selected_output;
                 switch (direction) {
-                    .next => mzterwm.rotFocusFwd(&other_idx, wm.outputs.items.len),
-                    .prev => mzterwm.rotFocusBck(&other_idx, wm.outputs.items.len),
+                    .next => mzterwm.rotFocusFwd(usize, &other_idx, wm.outputs.items.len - 1),
+                    .prev => mzterwm.rotFocusBck(usize, &other_idx, wm.outputs.items.len - 1),
                 }
                 const other_outp = wm.outputs.items[other_idx];
 
@@ -157,6 +160,25 @@ pub const Action = union(enum) {
                     spawnAndWaitChild,
                     .{ wm.globals.io, argv, wm.child_env },
                 );
+            },
+            .rotate_layout => |direction| {
+                const cur_outp = wm.selectedOutput() orelse return;
+                const ts = &(cur_outp.tag_space orelse return);
+                const current_layout: layout.LayoutKind = ts.tagdata[ts.primary].layout;
+
+                var cur_n = @intFromEnum(current_layout);
+                const max = @typeInfo(layout.LayoutKind).@"enum".fields.len - 1;
+
+                switch (direction) {
+                    .next => mzterwm.rotFocusFwd(@TypeOf(cur_n), &cur_n, max),
+                    .prev => mzterwm.rotFocusBck(@TypeOf(cur_n), &cur_n, max),
+                }
+
+                const new_kind: layout.LayoutKind = @enumFromInt(cur_n);
+
+                try ts.tagdata[ts.primary].swapLayout(new_kind, wm);
+
+                wm.updateActiveLayout();
             },
             .quit => {
                 wm.globals.rwm.exitSession();

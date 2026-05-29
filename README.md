@@ -7,6 +7,7 @@ also view multiple of them at once.
 ## Features
 
 - [x] Focus layout (rivertile-like)
+- [x] Scroll layout (niri-like)
 - [x] Gaps
 - [x] Tags
 - [x] Output management with ability to restore state after output reconnect

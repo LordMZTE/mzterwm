@@ -64,6 +64,7 @@ keybinds: []const struct {
 
 layouts: struct {
     focus: layout.Focus.Config = .{},
+    scroll: layout.Scroll.Config = .{},
 } = .{},
 
 const Config = @This();
