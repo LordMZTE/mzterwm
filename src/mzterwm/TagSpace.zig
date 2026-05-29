@@ -144,7 +144,7 @@ pub fn commitFocus(self: *TagSpace) std.mem.Allocator.Error!void {
         if (other_outp.tag_space != null and &other_outp.tag_space.? == self) {
             if (self.wm.selected_output != i) {
                 self.wm.selected_output = i;
-                self.wm.selected_output_dirty = true;
+                self.wm.onSelectedOutputChanged();
             }
 
             break;

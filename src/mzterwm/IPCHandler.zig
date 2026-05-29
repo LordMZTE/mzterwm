@@ -280,6 +280,7 @@ fn handleRequest(
                 ts.primary = req.primary;
                 ts.mask = req.mask;
                 self.wm.notifyTagsChangedOn(output);
+                self.wm.updateActiveLayout();
                 self.wm.requestManage();
                 self.wm.ipc.flushAll();
             }

@@ -203,7 +203,7 @@ pub const Output = struct {
 
                         if (self.wm.selected_output > i) {
                             self.wm.selected_output -|= 1;
-                            self.wm.selected_output_dirty = true;
+                            self.wm.onSelectedOutputChanged();
                         }
 
                         if (old.tag_space) |*ts| {
@@ -723,6 +723,7 @@ fn onTagKeyEvent(_: *river.XkbBindingV1, ev: river.XkbBindingV1.Event, keydat: *
                 ts.mask = tags.mask;
                 keydat.wm.switching_tags = null;
                 keydat.wm.notifyTagsChangedOn(outp);
+                keydat.wm.updateActiveLayout();
                 keydat.wm.ipc.emitEventToAll(.tag_switch_stop);
                 keydat.wm.ipc.flushAll();
             }
@@ -1019,6 +1020,12 @@ fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
     }
 }
 
+/// Must be called every time something changes the currently selected output.
+pub fn onSelectedOutputChanged(self: *WindowManager) void {
+    self.selected_output_dirty = true;
+    self.updateActiveLayout();
+}
+
 fn performManage(self: *WindowManager) !void {
     defer self.globals.rwm.manageFinish();
 
@@ -1238,7 +1245,7 @@ pub fn onFocusOverrideChanged(self: *WindowManager) void {
 }
 
 /// Checks if the currently focused layout is changed and, if so, updates the layout state
-/// accordingly.
+/// accordingly.  Must be called after any action that could have changed active layout.
 pub fn updateActiveLayout(self: *WindowManager) void {
     const cur_outp = self.selectedOutput() orelse return;
     const ts = &(cur_outp.tag_space orelse return);

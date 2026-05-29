@@ -41,7 +41,7 @@ pub const Action = union(enum) {
                     .next => mzterwm.rotFocusFwd(usize, &wm.selected_output, wm.outputs.items.len - 1),
                     .prev => mzterwm.rotFocusBck(usize, &wm.selected_output, wm.outputs.items.len - 1),
                 }
-                wm.selected_output_dirty = true;
+                wm.onSelectedOutputChanged();
 
                 if (wm.selectedOutput()) |out|
                     if (out.tag_space) |*ts| try ts.commitFocusCurrentOutput();
