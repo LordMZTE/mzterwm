@@ -260,8 +260,6 @@ pub const RotFn = @TypeOf(rotFocusFwd);
 
 /// Rotate some focus index forward
 pub fn rotFocusFwd(comptime T: type, focus: *T, max: T) void {
-    if (max == 0) return;
-
     focus.* = if (focus.* >= max) 0 else focus.* + 1;
 }
 
@@ -274,8 +272,6 @@ pub fn rotFocusFwdCheckWrap(comptime T: type, focus: *T, max: T) bool {
 
 /// Rotate some focus index backward
 pub fn rotFocusBck(comptime T: type, focus: *T, max: T) void {
-    if (max == 0) return;
-
     focus.* = if (focus.* == 0 or focus.* > max) max else focus.* - 1;
 }
 
@@ -289,4 +285,41 @@ pub fn rotFocusBckCheckWrap(comptime T: type, focus: *T, max: T) bool {
 test {
     _ = Ratio;
     _ = Region;
+}
+
+test "focus rotation in bounds" {
+    var n: u8 = 1;
+    rotFocusBck(u8, &n, 5);
+    try std.testing.expectEqual(0, n);
+    rotFocusBck(u8, &n, 5);
+    try std.testing.expectEqual(5, n);
+    rotFocusBck(u8, &n, 5);
+    try std.testing.expectEqual(4, n);
+
+    rotFocusFwd(u8, &n, 5);
+    try std.testing.expectEqual(5, n);
+    rotFocusFwd(u8, &n, 5);
+    try std.testing.expectEqual(0, n);
+    rotFocusFwd(u8, &n, 5);
+    try std.testing.expectEqual(1, n);
+}
+
+test "focus rotation out of bounds" {
+    var n: u8 = 42;
+    rotFocusBck(u8, &n, 5);
+    try std.testing.expectEqual(5, n);
+
+    n = 42;
+    rotFocusFwd(u8, &n, 5);
+    try std.testing.expectEqual(0, n);
+}
+
+test "focus rotation zero" {
+    var n: u8 = 42;
+    rotFocusBck(u8, &n, 0);
+    try std.testing.expectEqual(0, n);
+
+    n = 42;
+    rotFocusFwd(u8, &n, 0);
+    try std.testing.expectEqual(0, n);
 }
