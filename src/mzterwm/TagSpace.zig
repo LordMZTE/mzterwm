@@ -203,6 +203,7 @@ pub fn maybeUpdateFocus(self: *TagSpace, comptime rotFn: mzterwm.RotFn) !void {
     switch (self.wm.focus_override) {
         .none => {
             const wins = try self.getVisibleWindows();
+            if (wins.len == 0) return;
             rotFn(usize, &self.selected_window, wins.len - 1);
             self.visible_windows_valid = false;
             try self.commitFocusCurrentOutput();
@@ -210,6 +211,7 @@ pub fn maybeUpdateFocus(self: *TagSpace, comptime rotFn: mzterwm.RotFn) !void {
         },
         .non_exclusive => {
             const wins = try self.getVisibleWindows();
+            if (wins.len == 0) return;
             rotFn(usize, &self.selected_window, wins.len - 1);
             self.wm.focus_override = .none;
             self.wm.onFocusOverrideChanged();

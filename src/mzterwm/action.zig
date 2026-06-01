@@ -168,6 +168,10 @@ pub const Action = union(enum) {
 
                 var cur_n = @intFromEnum(current_layout);
                 const max = @typeInfo(layout.LayoutKind).@"enum".fields.len - 1;
+                if (max < 1) @compileError(
+                    "Layout switch logic isn't set up to handle less than 2 layouts!" ++
+                        "  Why'd we remove them anyways? :(",
+                );
 
                 switch (direction) {
                     .next => mzterwm.rotFocusFwd(@TypeOf(cur_n), &cur_n, max),
