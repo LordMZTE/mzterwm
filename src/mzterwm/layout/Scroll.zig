@@ -203,6 +203,7 @@ pub fn performLayout(
 
     if (self.columns.items.len == 0) {
         // If we don't have any columns saved, we will end up needing as many as we have windows.
+        log.debug("We have no columns yet, allocating for {} windows", .{windows.len});
         try self.columns.appendNTimes(alloc, new_col, windows.len);
     }
 
@@ -251,7 +252,9 @@ pub fn performLayout(
             col_i += 1;
             if (col_i >= self.columns.items.len) {
                 // Append new columns such that col_i is the index of the last item.
-                try self.columns.appendNTimes(alloc, new_col, col_i - self.columns.items.len + 1);
+                const needed = col_i - self.columns.items.len + 1;
+                log.debug("Out of columns, allocating extra {}", .{needed});
+                try self.columns.appendNTimes(alloc, new_col, needed);
             }
             col = &self.columns.items[col_i];
         }
@@ -333,6 +336,11 @@ pub fn performLayout(
         } else {
             win.render.updateClip(.zero);
         }
+    }
+
+    if (self.columns.items.len > col_i + 1) {
+        log.debug("We have extra unused columns, truncating to {}", .{col_i + 1});
+        self.columns.shrinkRetainingCapacity(col_i + 1);
     }
 }
 
