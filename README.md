@@ -18,6 +18,7 @@ also view multiple of them at once.
 - [x] Focusing Windows
 - [x] Fullscreen Windows
 - [x] Pointer Warp
+- [x] Disabling keybinds when the session is locked
 - [ ] ~Multi-Seat~
     - mzterwm currently contains an untested and half-assed attempt at not exploding with multiple
       seats. Stuff like each seat having it's own focused window and such is entirely unimplemented
