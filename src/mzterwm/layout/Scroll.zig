@@ -10,7 +10,7 @@ const Pos = @Vector(2, i32);
 
 const Scroll = @This();
 
-const log = std.log.scoped(.scroll);
+const log = std.log.scoped(.layout_scroll);
 
 // These limits really just exist to prevent the user from breaking our code :P
 const min_col_size = 32;
