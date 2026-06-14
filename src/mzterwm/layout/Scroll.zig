@@ -54,15 +54,15 @@ pub const Global = struct {
         wm.globals.alloc.free(self.keybinds);
     }
 
-    pub fn enter(self: *Global) void {
+    pub fn enter(self: *Global, wm: *mzterwm.WindowManager) void {
         for (self.keybinds) |k| {
-            k.bind.enable();
+            k.bind.enable(&wm.keys);
         }
     }
 
-    pub fn leave(self: *Global) void {
+    pub fn leave(self: *Global, wm: *mzterwm.WindowManager) void {
         for (self.keybinds) |k| {
-            k.bind.disable();
+            k.bind.disable(&wm.keys);
         }
     }
 };

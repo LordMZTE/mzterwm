@@ -7,12 +7,16 @@ const WindowManager = @import("WindowManager.zig");
 
 const river = wayland.client.river;
 
+const log = std.log.scoped(.keys);
+
 globals: *Globals,
 
 entries: std.ArrayList(*KeyBind),
 entry_pool: std.heap.MemoryPool(KeyBind),
 
 seats: std.ArrayList(*WindowManager.Seat),
+
+is_locked: bool,
 
 const KeyManager = @This();
 
@@ -29,19 +33,22 @@ pub const KeyBind = struct {
     /// seat appears.
     is_enabled: bool,
 
-    pub fn enable(self: *KeyBind) void {
+    pub fn enable(self: *KeyBind, mngr: *const KeyManager) void {
         if (self.is_enabled) return;
-        for (self.seatdata.items) |seatdat| {
-            seatdat.xkb_bind.enable();
+        if (!mngr.is_locked) {
+            for (self.seatdata.items) |seatdat| {
+                seatdat.xkb_bind.enable();
+            }
         }
         self.is_enabled = true;
     }
 
-    pub fn disable(self: *KeyBind) void {
+    pub fn disable(self: *KeyBind, mngr: *const KeyManager) void {
         if (!self.is_enabled) return;
-
-        for (self.seatdata.items) |seatdat| {
-            seatdat.xkb_bind.disable();
+        if (!mngr.is_locked) {
+            for (self.seatdata.items) |seatdat| {
+                seatdat.xkb_bind.disable();
+            }
         }
         self.is_enabled = false;
     }
@@ -94,6 +101,7 @@ pub fn init(globals: *Globals) !KeyManager {
         .entries = .empty,
         .entry_pool = try .initCapacity(globals.alloc, 64),
         .seats = .empty,
+        .is_locked = false,
     };
 }
 
@@ -160,5 +168,31 @@ pub fn seatRemoved(self: *KeyManager, old: *WindowManager.Seat) void {
 pub fn warpPointer(self: *KeyManager, to: @Vector(2, i32)) void {
     for (self.seats.items) |seat| {
         seat.warpPointer(to);
+    }
+}
+
+/// Called during a manage sequence if the session was locked or unlocked.
+pub fn manageSessionLockChange(self: *KeyManager, lock: bool) void {
+    // This flag is used if enable or disable is called on any of our keys.
+    self.is_locked = lock;
+
+    if (lock) {
+        log.info("session locked, disabling binds", .{});
+        // disable all keybinds, but don't set their is_enabled flag, since we'll use that to
+        // restore state later.
+        for (self.entries.items) |key| {
+            if (!key.is_enabled) continue;
+            for (key.seatdata.items) |seatkey| {
+                seatkey.xkb_bind.disable();
+            }
+        }
+    } else {
+        log.info("session unlocked, re-enabling binds", .{});
+        for (self.entries.items) |key| {
+            if (!key.is_enabled) continue;
+            for (key.seatdata.items) |seatkey| {
+                seatkey.xkb_bind.enable();
+            }
+        }
     }
 }

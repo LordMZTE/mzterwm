@@ -45,6 +45,9 @@ focused_window_dirty: enum {
     no_warp,
 },
 
+session_locked: bool,
+session_locked_dirty: bool,
+
 /// A slice containing each workspace key.
 tag_keys: []TagKeyData,
 
@@ -629,6 +632,8 @@ pub fn init(
         .selected_output_dirty = false,
         .focused_window = null,
         .focused_window_dirty = .no,
+        .session_locked = false,
+        .session_locked_dirty = false,
         .tag_keys = undefined, // initialized during setup
         .tag_keys_down = 0,
         .global_user_keys = undefined, // initialized during setup
@@ -659,7 +664,7 @@ pub fn setup(self: *WindowManager) !void {
             .keysym = conf.xkb,
             .mods = self.config.tag_keys.mods.toRiver(),
         }, onTagKeyEvent, tkey);
-        bind.enable();
+        bind.enable(&self.keys);
     }
 
     self.global_user_keys = try self.globals.alloc.alloc(UserKeyData, self.config.keybinds.len);
@@ -675,7 +680,7 @@ pub fn setup(self: *WindowManager) !void {
             .mods = conf.mods.toRiver(),
             .keysym = conf.key.xkb,
         }, onGlobalUserKeyEvent, ukey);
-        bind.enable();
+        bind.enable(&self.keys);
     }
 
     self.layout_global = .{
@@ -685,7 +690,7 @@ pub fn setup(self: *WindowManager) !void {
 
     // We always start on focus at the moment.
     // TODO: make this configurable
-    self.layout_global.focus.enter();
+    self.layout_global.focus.enter(self);
 }
 
 fn onTagKeyEvent(_: *river.XkbBindingV1, ev: river.XkbBindingV1.Event, keydat: *TagKeyData) void {
@@ -911,8 +916,14 @@ fn tryHandleEvent(self: *WindowManager, ev: river.WindowManagerV1.Event) !void {
         },
         .manage_start => try self.performManage(),
         .render_start => try self.performRender(),
-        .session_locked => {},
-        .session_unlocked => {},
+        .session_locked => {
+            self.session_locked = true;
+            self.session_locked_dirty = true;
+        },
+        .session_unlocked => {
+            self.session_locked = false;
+            self.session_locked_dirty = true;
+        },
         .window => |win| {
             const window = try self.window_pool.create(alloc);
             errdefer self.window_pool.destroy(window);
@@ -1028,6 +1039,11 @@ pub fn onSelectedOutputChanged(self: *WindowManager) void {
 
 fn performManage(self: *WindowManager) !void {
     defer self.globals.rwm.manageFinish();
+
+    if (self.session_locked_dirty) {
+        self.keys.manageSessionLockChange(self.session_locked);
+        self.session_locked_dirty = false;
+    }
 
     if (self.selected_output_dirty) {
         if (self.selectedOutput()) |outp| {
@@ -1254,10 +1270,10 @@ pub fn updateActiveLayout(self: *WindowManager) void {
     if (new_layout != self.prev_active_layout) {
         std.log.info("Layout switched: {} -> {}", .{ self.prev_active_layout, new_layout });
         switch (self.prev_active_layout) {
-            inline else => |k| @field(self.layout_global, @tagName(k)).leave(),
+            inline else => |k| @field(self.layout_global, @tagName(k)).leave(self),
         }
         switch (new_layout) {
-            inline else => |k| @field(self.layout_global, @tagName(k)).enter(),
+            inline else => |k| @field(self.layout_global, @tagName(k)).enter(self),
         }
         self.prev_active_layout = new_layout;
     }
