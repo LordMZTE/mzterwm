@@ -1181,7 +1181,17 @@ fn performManage(self: *WindowManager) !void {
 
     if (do_window_pointer_warp) {
         if (self.focused_window) |win| {
-            self.keys.warpPointer(win.render.region.center());
+            for (self.outputs.items) |outp| {
+                if (outp.tag_space == null or &outp.tag_space.? != win.tag_space) continue;
+
+                self.keys.warpPointer(outp.region.clampPoint(win.render.region.center()));
+                break;
+            } else {
+                std.log.warn(
+                    "Wanted to perform window pointer warp, but window has no known output!",
+                    .{},
+                );
+            }
         }
     }
 }

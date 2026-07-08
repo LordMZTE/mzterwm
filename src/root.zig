@@ -206,9 +206,27 @@ pub const Region = struct {
         return self.pos + self.size;
     }
 
+    /// Given a point that may be outside the region, returns the closest point inside the region.
+    pub fn clampPoint(self: Region, point: @Vector(2, i32)) @Vector(2, i32) {
+        return std.math.clamp(point, self.pos, self.bottomRight());
+    }
+
     test "center" {
         const region: Region = .{ .pos = .{ 10, 10 }, .size = .{ 10, 10 } };
         try std.testing.expectEqual(@as(@Vector(2, i32), @splat(15)), region.center());
+    }
+
+    test "clampPoint" {
+        const region: Region = .{ .pos = .{ 10, 10 }, .size = .{ 10, 10 } };
+
+        // Inside region - should return the point unchanged
+        try std.testing.expectEqual(@as(@Vector(2, i32), .{ 10, 10 }), region.clampPoint(.{ 10, 10 }));
+
+        // Corner cases - should clamp both axes
+        try std.testing.expectEqual(@as(@Vector(2, i32), .{ 10, 10 }), region.clampPoint(.{ 5, 5 }));
+        try std.testing.expectEqual(@as(@Vector(2, i32), .{ 20, 10 }), region.clampPoint(.{ 25, 5 }));
+        try std.testing.expectEqual(@as(@Vector(2, i32), .{ 10, 20 }), region.clampPoint(.{ 5, 25 }));
+        try std.testing.expectEqual(@as(@Vector(2, i32), .{ 20, 20 }), region.clampPoint(.{ 25, 25 }));
     }
 };
 
