@@ -219,10 +219,12 @@ pub fn performLayout(
                 new_col.size;
         }
 
-        const axis_max = axis_min + if (focus_idx < self.columns.items.len)
+        const col_size = if (focus_idx < self.columns.items.len)
             self.columns.items[focus_idx].size
         else
             new_col.size;
+
+        const axis_max = axis_min + col_size;
 
         const clipped_left = self.scroll >= axis_min;
         const clipped_right = self.scroll + axis_size <= axis_max;
@@ -231,7 +233,14 @@ pub fn performLayout(
             // Window is wider than output and clipped on both sides, the user needs to scroll
             // manually.
         } else if (clipped_left) {
-            self.scroll = axis_min;
+            if (col_size > axis_size) {
+                // Column is larger than axis, scroll such that it's right edge is at the right
+                // screen border.  This makes manual scrolling nicer.
+                self.scroll = axis_max - axis_size;
+            } else {
+                // Column isn't larger than axis, scroll such that it's on the left screen border.
+                self.scroll = axis_min;
+            }
         } else if (clipped_right) {
             self.scroll = axis_max - axis_size;
         }
