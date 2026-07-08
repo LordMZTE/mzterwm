@@ -228,6 +228,70 @@ pub const Region = struct {
         try std.testing.expectEqual(@as(@Vector(2, i32), .{ 10, 20 }), region.clampPoint(.{ 5, 25 }));
         try std.testing.expectEqual(@as(@Vector(2, i32), .{ 20, 20 }), region.clampPoint(.{ 25, 25 }));
     }
+
+    test "sliceAxis" {
+        const region: Region = .{ .pos = .{ 10, 10 }, .size = .{ 20, 30 } };
+
+        try std.testing.expectEqual([2]Region{
+            .{ .pos = .{ 10, 10 }, .size = .{ 10, 30 } },
+            .{ .pos = .{ 20, 10 }, .size = .{ 10, 30 } },
+        }, region.sliceAxis(.half, .row));
+
+        try std.testing.expectEqual([2]Region{
+            .{ .pos = .{ 10, 10 }, .size = .{ 20, 15 } },
+            .{ .pos = .{ 10, 25 }, .size = .{ 20, 15 } },
+        }, region.sliceAxis(.half, .col));
+    }
+
+    test "sliceCardinal" {
+        const region: Region = .{ .pos = .{ 10, 10 }, .size = .{ 20, 30 } };
+
+        // vertical
+        try std.testing.expectEqual([2]Region{
+            .{ .pos = .{ 10, 10 }, .size = .{ 20, 15 } },
+            .{ .pos = .{ 10, 25 }, .size = .{ 20, 15 } },
+        }, region.sliceCardinal(.half, .down));
+        try std.testing.expectEqual([2]Region{
+            .{ .pos = .{ 10, 25 }, .size = .{ 20, 15 } },
+            .{ .pos = .{ 10, 10 }, .size = .{ 20, 15 } },
+        }, region.sliceCardinal(.half, .up));
+
+        // horizontal
+        try std.testing.expectEqual([2]Region{
+            .{ .pos = .{ 10, 10 }, .size = .{ 10, 30 } },
+            .{ .pos = .{ 20, 10 }, .size = .{ 10, 30 } },
+        }, region.sliceCardinal(.half, .right));
+        try std.testing.expectEqual([2]Region{
+            .{ .pos = .{ 20, 10 }, .size = .{ 10, 30 } },
+            .{ .pos = .{ 10, 10 }, .size = .{ 10, 30 } },
+        }, region.sliceCardinal(.half, .left));
+    }
+
+    test "contains" {
+        const region: Region = .{ .pos = .{ 10, 10 }, .size = .{ 20, 30 } };
+        const corner = region.bottomRight();
+
+        try std.testing.expect(region.contains(region.pos));
+        try std.testing.expect(region.contains(corner));
+
+        // points just outside the region are excluded
+        try std.testing.expect(!region.contains(region.pos - @as(@Vector(2, i32), .{ 1, 1 })));
+        try std.testing.expect(!region.contains(corner + @as(@Vector(2, i32), .{ 1, 1 })));
+    }
+
+    test "inset" {
+        const region: Region = .{ .pos = .{ 10, 10 }, .size = .{ 20, 30 } };
+
+        try std.testing.expectEqual(@as(Region, .{ .pos = .{ 12, 12 }, .size = .{ 16, 26 } }), region.inset(2));
+        try std.testing.expectEqual(@as(Region, .{ .pos = .{ 14, 14 }, .size = .{ 12, 22 } }), region.inset(4));
+    }
+
+    test "outset" {
+        const region: Region = .{ .pos = .{ 10, 10 }, .size = .{ 20, 30 } };
+
+        try std.testing.expectEqual(@as(Region, .{ .pos = .{ 8, 8 }, .size = .{ 24, 34 } }), region.outset(2));
+        try std.testing.expectEqual(@as(Region, .{ .pos = .{ 6, 6 }, .size = .{ 28, 38 } }), region.outset(4));
+    }
 };
 
 /// An 8-bit fixed-point ratio.
