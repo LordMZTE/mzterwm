@@ -602,7 +602,7 @@ pub fn init(
     env: *std.process.Environ.Map,
 ) !WindowManager {
     // In debug builds, we don't propagate WAYLAND_DEBUG to children to avoid cluttering log output.
-    if (@import("builtin").mode == .Debug) {
+    if (@import("builtin").mode.runtimeSafety()) {
         _ = env.swapRemove("WAYLAND_DEBUG");
     }
 
@@ -761,6 +761,7 @@ pub fn shutdown(self: *WindowManager) void {
 pub fn deinit(self: *WindowManager) void {
     // FIXME: this is invalid if setup hasn't been called
     self.layout_global.focus.deinit(self);
+    self.layout_global.scroll.deinit(self);
 
     for (self.outputs.items) |outp| {
         outp.unref();

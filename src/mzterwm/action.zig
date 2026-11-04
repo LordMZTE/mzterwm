@@ -167,7 +167,7 @@ pub const Action = union(enum) {
                 const current_layout: layout.LayoutKind = ts.tagdata[ts.primary].layout;
 
                 var cur_n = @intFromEnum(current_layout);
-                const max = @typeInfo(layout.LayoutKind).@"enum".fields.len - 1;
+                const max = @typeInfo(layout.LayoutKind).@"enum".field_names.len - 1;
                 if (max < 1) @compileError(
                     "Layout switch logic isn't set up to handle less than 2 layouts!" ++
                         "  Why'd we remove them anyways? :(",

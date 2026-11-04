@@ -160,7 +160,7 @@ pub fn commitFocus(self: *TagSpace) std.mem.Allocator.Error!void {
 /// Like `commitFocus`, but more efficient if this TagSpace's output is already selected.
 /// Caller asserts that the current output is this tag space's output.
 pub fn commitFocusCurrentOutput(self: *TagSpace) std.mem.Allocator.Error!void {
-    if (@import("builtin").mode == .Debug) {
+    if (@import("builtin").mode.runtimeSafety()) {
         const this_outp = self.wm.findOutputForTagSpace(self);
         const cur_outp = self.wm.selectedOutput();
         std.debug.assert(this_outp == cur_outp);

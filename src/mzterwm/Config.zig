@@ -92,8 +92,8 @@ pub const Modifiers = packed struct {
 pub const Keysym = struct {
     xkb: xkbcommon.Keysym,
 
-    pub const ziggy_options = struct {
-        pub const deserialize = ziggyDeserialize;
+    pub const ziggy_options: ziggy.Options(Keysym) = .{
+        .deserialize = ziggyDeserialize,
     };
 
     fn ziggyDeserialize(
@@ -127,8 +127,8 @@ pub const Keysym = struct {
 
 pub const Color = struct {
     vec: @Vector(4, u8),
-    pub const ziggy_options = struct {
-        pub const deserialize = ziggyDeserialize;
+    pub const ziggy_options: ziggy.Options(Color) = .{
+        .deserialize = ziggyDeserialize,
     };
 
     fn ziggyDeserialize(
@@ -200,7 +200,7 @@ pub fn load(io: std.Io, alloc: std.mem.Allocator, arena: std.mem.Allocator, path
     return ziggy.deserializeLeaky(Config, arena, content, &meta, opts) catch |e| {
         std.log.err(
             "Configuration parse error:\n{f}",
-            .{meta.reportErrorsFmt(alloc, opts, content, path, e)},
+            .{meta.reportErrorsFmt(alloc, opts, path, content, e)},
         );
         return e;
     };

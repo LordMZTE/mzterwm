@@ -9,7 +9,7 @@ pub const ProtocolVersion = u32;
 pub const version: ProtocolVersion = 4;
 
 pub const tag_bitwidth = 32;
-pub const TagMask = std.meta.Int(.unsigned, tag_bitwidth);
+pub const TagMask = @Int(.unsigned, tag_bitwidth);
 pub const TagIdx = std.math.Log2Int(TagMask);
 
 pub const readPkt = s2s.deserializeAlloc;
