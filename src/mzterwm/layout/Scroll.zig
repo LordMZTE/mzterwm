@@ -346,11 +346,6 @@ pub fn performLayout(
             win.render.updateClip(.zero);
         }
     }
-
-    if (self.columns.items.len > col_i + 1) {
-        log.debug("We have extra unused columns, truncating to {}", .{col_i + 1});
-        self.columns.shrinkRetainingCapacity(col_i + 1);
-    }
 }
 
 /// Find the index of the column the focused window resides in, or null if the focused window isn't
