@@ -698,7 +698,6 @@ fn onTagKeyEvent(_: *river.XkbBindingV1, ev: river.XkbBindingV1.Event, keydat: *
     switch (ev) {
         .pressed => {
             keydat.wm.tag_keys_down +|= 1;
-            const outp = keydat.wm.selectedOutput() orelse return;
             if (keydat.wm.switching_tags == null) keydat.wm.switching_tags = .init;
             const tags = &keydat.wm.switching_tags.?;
 
@@ -714,6 +713,9 @@ fn onTagKeyEvent(_: *river.XkbBindingV1, ev: river.XkbBindingV1.Event, keydat: *
                 tags.mask |= @as(TagSpace.Mask, 1) << tag;
             }
 
+            // TODO: this makes an IPC client's state be out-of-sync when the user changes outputs
+            // during a tag switch.
+            const outp = keydat.wm.selectedOutput() orelse return;
             tags.emitChangeEvent(keydat.wm, outp);
             keydat.wm.ipc.flushAll();
         },
